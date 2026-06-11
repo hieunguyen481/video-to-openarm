@@ -20,6 +20,8 @@ def test_bimanual_synthetic_has_independent_hands_and_pinch():
 
     assert left["wrist"].shape == (100, 3)
     assert right["wrist"].shape == (100, 3)
+    assert left["palm_scale"].shape == (100,)
+    assert np.nanmax(left["palm_scale"]) - np.nanmin(left["palm_scale"]) > 0
     assert not np.array_equal(
         left_pinch["gripper_cmd"], right_pinch["gripper_cmd"]
     )

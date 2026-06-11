@@ -57,6 +57,7 @@ def generate_hand_pose(
         "timestamps": np.arange(frames, dtype=np.float64) / fps,
         "valid": valid,
         "handedness": np.asarray("Right"),
+        "palm_scale": (0.10 + 0.70 * wrist[:, 2]).astype(np.float32),
         **{key: value.astype(np.float32) for key, value in arrays.items()},
     }
 
@@ -100,6 +101,7 @@ def generate_bimanual_hand_pose(
     for side, pose in (("left", left), ("right", right)):
         for key in (
             "valid",
+            "palm_scale",
             "wrist",
             "thumb_tip",
             "index_tip",

@@ -168,3 +168,48 @@ Chưa có video hai tay thật trong workspace, nên chưa đo được:
 
 `mirror_input: true` được bật mặc định để webcam hoạt động theo kiểu gương.
 Nếu nguồn video đã mirror sẵn, đổi thành `false`.
+
+## 8. Nghiệm thu video thật `demo_001.mp4`
+
+Video quay ngày 11/06/2026:
+
+```text
+327 frames
+1280x720
+30 FPS
+10.9 seconds
+```
+
+Kết quả:
+
+| Chỉ số | Tay trái | Tay phải |
+|---|---:|---:|
+| Tracking hợp lệ | 97.86% | 99.69% |
+| Gripper transitions | 10 | 4 |
+| Mean IK error | 1.29 cm | 1.08 cm |
+| Max IK error | 2.00 cm | 2.14 cm |
+
+IK gộp:
+
+```text
+mean error = 1.19 cm
+max error  = 2.14 cm
+converged  = 100%
+```
+
+Video thật phát hiện hai vấn đề mà synthetic không thể hiện:
+
+1. Tay vừa vào khung tạo một pinch giả dài 1 frame. Đã thêm xác nhận chuyển
+   trạng thái trong 3 frame, loại xung giả và giảm transitions tay phải từ 6
+   xuống 4.
+2. Tọa độ `z` của wrist landmark là mốc tương đối nên gần như không đổi. Đã
+   thay tín hiệu độ sâu bằng `palm_scale` (kích thước lòng bàn tay trên ảnh).
+   Sau sửa, target depth thay đổi khoảng 6.5 cm bên trái và 9.7 cm bên phải.
+
+Artefact:
+
+```text
+outputs/debug_videos/demo_001_real_bimanual_hand_debug.mp4
+outputs/replay_videos/demo_001_real_bimanual_openarm.mp4
+outputs/demo_001_real_bimanual_quality_report.json
+```

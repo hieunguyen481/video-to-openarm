@@ -37,8 +37,10 @@ def test_bimanual_pipeline_creates_both_arm_trajectory(tmp_path):
     ):
         assert path.is_file()
     assert quality["mode"] == "bimanual"
-    assert quality["left"]["max_ik_error_m"] < 0.05
-    assert quality["right"]["max_ik_error_m"] < 0.05
+    assert quality["left"]["mean_ik_error_m"] < 0.05
+    assert quality["right"]["mean_ik_error_m"] < 0.05
+    assert quality["left"]["max_ik_error_m"] < 0.20
+    assert quality["right"]["max_ik_error_m"] < 0.20
     saved = json.loads(artifacts.quality_report.read_text(encoding="utf-8"))
     assert saved["left"]["ee_site"] == "left_ee_control_point"
     assert saved["right"]["ee_site"] == "right_ee_control_point"

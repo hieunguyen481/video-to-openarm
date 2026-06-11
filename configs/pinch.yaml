@@ -2,4 +2,5 @@ close_threshold: 0.045
 open_threshold: 0.065
 initial_state: 0
 invalid_policy: hold
-
+close_confirm_frames: 3
+open_confirm_frames: 3

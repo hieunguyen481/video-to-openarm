@@ -16,11 +16,15 @@ def detect_pinch(
     open_threshold: float,
     initial_state: int = 0,
     invalid_policy: str = "hold",
+    close_confirm_frames: int = 1,
+    open_confirm_frames: int = 1,
 ) -> dict[str, np.ndarray]:
     if close_threshold >= open_threshold:
         raise ValueError("close_threshold must be smaller than open_threshold")
     if invalid_policy not in {"hold", "open"}:
         raise ValueError("invalid_policy must be 'hold' or 'open'")
+    if close_confirm_frames < 1 or open_confirm_frames < 1:
+        raise ValueError("Pinch confirmation frames must be positive")
 
     keys = ("thumb_tip", *FINGER_KEYS, "valid")
     length = require_time_length(hand_pose, keys)
@@ -40,15 +44,28 @@ def detect_pinch(
     pinch_finger[usable] = np.argmin(distances[usable], axis=1).astype(np.int8)
 
     state = float(bool(initial_state))
+    close_count = 0
+    open_count = 0
     command = np.empty(length, dtype=np.float32)
     for index in range(length):
         if not usable[index]:
+            close_count = 0
+            open_count = 0
             if invalid_policy == "open":
                 state = 0.0
         elif pinch_distance[index] < close_threshold:
-            state = 1.0
+            close_count += 1
+            open_count = 0
+            if close_count >= close_confirm_frames:
+                state = 1.0
         elif pinch_distance[index] > open_threshold:
-            state = 0.0
+            open_count += 1
+            close_count = 0
+            if open_count >= open_confirm_frames:
+                state = 0.0
+        else:
+            close_count = 0
+            open_count = 0
         command[index] = state
 
     return {
@@ -56,4 +73,3 @@ def detect_pinch(
         "pinch_finger": pinch_finger,
         "gripper_cmd": command,
     }
-

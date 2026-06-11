@@ -32,3 +32,23 @@ def test_threshold_order_is_validated():
     else:
         raise AssertionError("Expected invalid thresholds to fail")
 
+
+def test_confirmation_frames_reject_single_frame_false_pinch():
+    pose = generate_hand_pose(frames=30, noise_std=0)
+    pose["index_tip"][:] = pose["wrist"] + np.array([0.1, 0, 0])
+    pose["index_tip"][5] = pose["thumb_tip"][5]
+    pose["index_tip"][10:13] = pose["thumb_tip"][10:13]
+
+    result = detect_pinch(
+        pose,
+        close_threshold=0.03,
+        open_threshold=0.06,
+        close_confirm_frames=3,
+        open_confirm_frames=2,
+    )
+
+    assert result["gripper_cmd"][5] == 0
+    assert result["gripper_cmd"][11] == 0
+    assert result["gripper_cmd"][12] == 1
+    assert result["gripper_cmd"][13] == 1
+    assert result["gripper_cmd"][14] == 0

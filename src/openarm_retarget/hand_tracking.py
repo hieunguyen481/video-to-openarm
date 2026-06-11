@@ -14,6 +14,7 @@ LANDMARK_INDICES = {
     "ring_tip": 16,
     "pinky_tip": 20,
 }
+PALM_MCP_INDICES = (5, 9, 13, 17)
 
 HAND_CONNECTIONS = (
     (0, 1),
@@ -82,6 +83,18 @@ def _select_hands_by_side(
         if side in selected and selected[side] is None:
             selected[side] = hand
     return selected
+
+
+def _palm_scale(landmarks: Any) -> float:
+    wrist = np.asarray([landmarks[0].x, landmarks[0].y], dtype=float)
+    distances = [
+        np.linalg.norm(
+            np.asarray([landmarks[index].x, landmarks[index].y], dtype=float)
+            - wrist
+        )
+        for index in PALM_MCP_INDICES
+    ]
+    return float(np.mean(distances))
 
 
 def _draw_landmarks(
@@ -226,6 +239,7 @@ def extract_video_hand_pose(
             raise RuntimeError(f"Cannot create debug video: {debug_path}")
 
     values = {name: [] for name in LANDMARK_INDICES}
+    palm_scale: list[float] = []
     timestamps: list[float] = []
     valid: list[bool] = []
     selected_labels: list[str] = []
@@ -248,9 +262,11 @@ def extract_video_hand_pose(
             valid.append(hand is not None)
             selected_labels.append(label)
             if hand is None:
+                palm_scale.append(np.nan)
                 for name in LANDMARK_INDICES:
                     values[name].append([np.nan, np.nan, np.nan])
             else:
+                palm_scale.append(_palm_scale(hand))
                 for name, index in LANDMARK_INDICES.items():
                     item = hand[index]
                     values[name].append([item.x, item.y, item.z])
@@ -284,6 +300,7 @@ def extract_video_hand_pose(
         "handedness": np.asarray(
             next((label for label in selected_labels if label), preferred or "Unknown")
         ),
+        "palm_scale": np.asarray(palm_scale, dtype=np.float32),
         **{
             name: np.asarray(points, dtype=np.float32)
             for name, points in values.items()
@@ -332,6 +349,7 @@ def extract_video_bimanual_hand_pose(
         side: {name: [] for name in LANDMARK_INDICES}
         for side in ("left", "right")
     }
+    palm_scale = {"left": [], "right": []}
     valid = {"left": [], "right": []}
     timestamps: list[float] = []
     colors = {"left": (50, 205, 50), "right": (255, 150, 30)}
@@ -354,9 +372,11 @@ def extract_video_bimanual_hand_pose(
                 hand = selected[side]
                 valid[side].append(hand is not None)
                 if hand is None:
+                    palm_scale[side].append(np.nan)
                     for name in LANDMARK_INDICES:
                         values[side][name].append([np.nan, np.nan, np.nan])
                 else:
+                    palm_scale[side].append(_palm_scale(hand))
                     for name, index in LANDMARK_INDICES.items():
                         item = hand[index]
                         values[side][name].append([item.x, item.y, item.z])
@@ -393,6 +413,9 @@ def extract_video_bimanual_hand_pose(
     }
     for side in ("left", "right"):
         data[f"{side}_valid"] = np.asarray(valid[side], dtype=bool)
+        data[f"{side}_palm_scale"] = np.asarray(
+            palm_scale[side], dtype=np.float32
+        )
         for name, points in values[side].items():
             data[f"{side}_{name}"] = np.asarray(points, dtype=np.float32)
     return TrackingResult(data=data, fps=fps, frame_size=(width, height))

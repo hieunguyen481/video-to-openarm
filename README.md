@@ -197,7 +197,8 @@ python scripts/03_detect_pinch.py \
 ```
 
 Hysteresis dùng hai ngưỡng: đóng ở `0.045`, mở ở `0.065`; vùng giữa giữ trạng
-thái trước để tránh nhấp nháy.
+thái trước. Mỗi chuyển trạng thái phải ổn định ít nhất 3 frame để loại xung
+pinch giả khi tay vừa vào khung.
 
 ![Left pinch](docs/images/left_pinch_detection.png)
 ![Right pinch](docs/images/right_pinch_detection.png)

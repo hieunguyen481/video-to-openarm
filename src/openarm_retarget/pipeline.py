@@ -397,12 +397,23 @@ def run_bimanual_from_pose(
             max_speed=2.0,
             timestamps=pose["timestamps"],
         )
+        if "palm_scale" in side_data:
+            depth_proxy = smooth_wrist(
+                np.asarray(side_data["palm_scale"])[:, None],
+                side_data["valid"],
+                window=7,
+                max_speed=2.0,
+                timestamps=pose["timestamps"],
+            )[:, 0]
+            wrist_smooth = wrist_smooth.copy()
+            wrist_smooth[:, 2] = depth_proxy
         command = pinch_results[side]["gripper_cmd"]
         smooth_data.update(
             {
                 f"{side}_valid": side_data["valid"],
                 f"{side}_wrist_raw": side_data["wrist"],
                 f"{side}_wrist_smooth": wrist_smooth,
+                f"{side}_depth_proxy": wrist_smooth[:, 2],
                 f"{side}_gripper_cmd": command,
             }
         )

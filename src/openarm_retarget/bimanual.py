@@ -17,7 +17,7 @@ LANDMARK_KEYS = (
 def side_pose(data: Mapping[str, Any], side: str) -> dict[str, np.ndarray]:
     if side not in {"left", "right"}:
         raise ValueError("side must be 'left' or 'right'")
-    return {
+    result = {
         "timestamps": np.asarray(data["timestamps"]),
         "valid": np.asarray(data[f"{side}_valid"]),
         "handedness": np.asarray(side.title()),
@@ -26,6 +26,10 @@ def side_pose(data: Mapping[str, Any], side: str) -> dict[str, np.ndarray]:
             for key in LANDMARK_KEYS
         },
     }
+    palm_key = f"{side}_palm_scale"
+    if palm_key in data:
+        result["palm_scale"] = np.asarray(data[palm_key])
+    return result
 
 
 def prefix_fields(

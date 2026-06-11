@@ -4,7 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
+from .config import load_config
 from .pipeline import run_bimanual_synthetic, run_bimanual_video
+from .viewer import launch_viewer
 
 
 def _demo(args: argparse.Namespace) -> int:
@@ -21,6 +23,16 @@ def _demo(args: argparse.Namespace) -> int:
         _, quality = run_bimanual_synthetic(frames=args.frames, **common)
     print(json.dumps(quality, indent=2, ensure_ascii=False))
     return 0 if quality["max_ik_error_m"] < 0.20 else 2
+
+
+def _viewer(args: argparse.Namespace) -> int:
+    return launch_viewer(
+        load_config(args.config),
+        keyframe=args.keyframe,
+        static=args.static,
+        walls=args.walls,
+        no_sheet=args.no_sheet,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +54,18 @@ def build_parser() -> argparse.ArgumentParser:
         default="kinematic",
     )
     demo.set_defaults(handler=_demo)
+
+    viewer = subparsers.add_parser(
+        "viewer", help="Open the OpenArm MuJoCo interactive viewer"
+    )
+    viewer.add_argument(
+        "--config", type=Path, default=Path("configs/openarm.yaml")
+    )
+    viewer.add_argument("--keyframe", default="home")
+    viewer.add_argument("--static", action="store_true")
+    viewer.add_argument("--walls", action="store_true")
+    viewer.add_argument("--no-sheet", action="store_true")
+    viewer.set_defaults(handler=_viewer)
     return parser
 
 

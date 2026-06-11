@@ -27,6 +27,28 @@ Video hai tay
 API một tay cũ vẫn được giữ để tương thích, nhưng CLI `openarm-retarget demo`
 mặc định chạy bimanual.
 
+### Tiến độ theo kế hoạch 4 tuần
+
+| Tuần | Nội dung kế hoạch | Trạng thái |
+|---|---|---|
+| Tuần 1 | OpenArm MuJoCo, inspect model, hand tracking | Hoàn thành |
+| Tuần 2 | Pinch, smoothing, retargeting | Hoàn thành cho hai tay |
+| Tuần 3 | Bimanual IK, replay, hai gripper | Hoàn thành |
+| Tuần 4 | Tối ưu, dataset, baseline, README/report, demo | Hoàn thành offline |
+
+Ngoài kế hoạch 4 tuần đã có thêm:
+
+- Schema bimanual `left_*` và `right_*`.
+- Jacobian gộp 6D cho 14 joint.
+- Hai gripper độc lập.
+- CLI mở viewer: `openarm-retarget viewer`.
+
+Chưa hoàn thành:
+
+- Điều khiển webcam trực tiếp trong viewer theo thời gian thực.
+- Calibration bằng video hai tay thật.
+- Collision avoidance giữa hai cánh tay.
+
 ## 2. Kết quả nghiệm thu bimanual
 
 Lệnh:

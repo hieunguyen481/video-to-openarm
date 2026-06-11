@@ -50,6 +50,28 @@ Model HandLandmarker không commit vào Git. Script tải model `Latest` từ
 
 ## Chạy nhanh
 
+Mở môi trường MuJoCo tương tác:
+
+```bash
+openarm-retarget viewer
+```
+
+Các biến thể:
+
+```bash
+# Giữ pose home, không chạy physics
+openarm-retarget viewer --static
+
+# Bật collision walls
+openarm-retarget viewer --walls
+
+# Lệnh gốc của package OpenArm cũng dùng được
+openarm-mujoco-launch --keyframe home
+```
+
+Viewer cho phép quan sát model, camera, joint/control trong MuJoCo. Đây chưa
+phải vòng lặp webcam điều khiển robot theo thời gian thực.
+
 Chạy toàn bộ pipeline bằng dữ liệu synthetic và render MP4:
 
 ```bash
@@ -269,6 +291,10 @@ ban đầu nằm trong [PROJECT_PLAN.md](PROJECT_PLAN.md).
 MediaPipe Tasks và model chính thức đã khởi tạo thành công. Repo không chứa
 video tay thật, vì vậy tỷ lệ tracking trên camera thực cần được đo bằng video
 của người vận hành.
+
+Theo kế hoạch 4 tuần: tuần 1-3 đã hoàn thành; tuần 4 đã hoàn thành phần
+smoothing, dataset, báo cáo và demo offline. Phần chưa làm là live
+`webcam -> bimanual IK -> MuJoCo viewer` trong cùng vòng lặp thời gian thực.
 
 ## Nguồn
 

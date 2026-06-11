@@ -30,6 +30,13 @@ class OpenArmModelInfo:
     home_keyframe: str | None
 
 
+@dataclass(frozen=True)
+class BimanualOpenArmInfo:
+    model_path: Path
+    sides: dict[str, OpenArmModelInfo]
+    home_keyframe: str | None
+
+
 def resolve_model_path(config: Mapping[str, Any]) -> Path:
     explicit = config.get("model_path") or os.environ.get("OPENARM_MJCF")
     if explicit:
@@ -118,13 +125,13 @@ def _actuators_for_joints(model: Any, joint_names: tuple[str, ...]) -> tuple[str
     )
 
 
-def load_openarm(
+def _model_info_for_side(
+    model: Any,
+    path: Path,
     config: Mapping[str, Any],
-) -> tuple[Any, OpenArmModelInfo]:
+    side: str,
+) -> OpenArmModelInfo:
     mujoco = _mujoco()
-    path = resolve_model_path(config)
-    model = mujoco.MjModel.from_xml_path(str(path))
-    side = str(config.get("side", "left")).lower()
     if side not in {"left", "right"}:
         raise ValueError("side must be 'left' or 'right'")
 
@@ -157,7 +164,7 @@ def load_openarm(
     if keyframe:
         _name_id(model, mujoco.mjtObj.mjOBJ_KEY, str(keyframe))
 
-    info = OpenArmModelInfo(
+    return OpenArmModelInfo(
         model_path=path,
         ee_site=ee_site,
         arm_joint_names=joint_names,
@@ -165,7 +172,45 @@ def load_openarm(
         gripper_actuator=gripper,
         home_keyframe=str(keyframe) if keyframe else None,
     )
+
+
+def load_openarm(
+    config: Mapping[str, Any],
+) -> tuple[Any, OpenArmModelInfo]:
+    mujoco = _mujoco()
+    path = resolve_model_path(config)
+    model = mujoco.MjModel.from_xml_path(str(path))
+    side = str(config.get("side", "left")).lower()
+    info = _model_info_for_side(model, path, config, side)
     return model, info
+
+
+def load_bimanual_openarm(
+    config: Mapping[str, Any],
+) -> tuple[Any, BimanualOpenArmInfo]:
+    mujoco = _mujoco()
+    path = resolve_model_path(config)
+    model = mujoco.MjModel.from_xml_path(str(path))
+    configured_sides = tuple(config.get("sides", ("left", "right")))
+    if set(configured_sides) != {"left", "right"} or len(configured_sides) != 2:
+        raise ValueError("Bimanual config must contain sides: [left, right]")
+
+    infos: dict[str, OpenArmModelInfo] = {}
+    for side in configured_sides:
+        side_config = dict(config)
+        side_config["side"] = side
+        side_config["ee_site"] = "auto"
+        side_config["arm_joint_names"] = "auto"
+        side_config["gripper_actuator"] = "auto"
+        infos[side] = _model_info_for_side(model, path, side_config, side)
+    keyframes = {info.home_keyframe for info in infos.values()}
+    if len(keyframes) != 1:
+        raise ValueError("Both arms must use the same home keyframe")
+    return model, BimanualOpenArmInfo(
+        model_path=path,
+        sides=infos,
+        home_keyframe=keyframes.pop(),
+    )
 
 
 def reset_home(model: Any, data: Any, keyframe: str | None) -> None:
@@ -218,5 +263,35 @@ def model_report(model: Any, info: OpenArmModelInfo) -> str:
         lines.append(
             f"  [{actuator_id:02d}] {name}: "
             f"ctrlrange={model.actuator_ctrlrange[actuator_id].tolist()}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def bimanual_model_report(model: Any, info: BimanualOpenArmInfo) -> str:
+    mujoco = _mujoco()
+    data = mujoco.MjData(model)
+    reset_home(model, data, info.home_keyframe)
+    lines = [
+        "OpenArm Bimanual MuJoCo Model Report",
+        "=" * 36,
+        f"model_path: {info.model_path}",
+        f"nq: {model.nq}",
+        f"nv: {model.nv}",
+        f"nu: {model.nu}",
+        f"home_keyframe: {info.home_keyframe}",
+    ]
+    for side in ("left", "right"):
+        arm = info.sides[side]
+        site_id = _name_id(model, mujoco.mjtObj.mjOBJ_SITE, arm.ee_site)
+        lines.extend(
+            [
+                "",
+                f"{side.upper()} ARM",
+                f"ee_site: {arm.ee_site}",
+                f"ee_home_position: {np.array2string(data.site_xpos[site_id], precision=6)}",
+                f"arm_joint_names: {list(arm.arm_joint_names)}",
+                f"arm_actuator_names: {list(arm.arm_actuator_names)}",
+                f"gripper_actuator: {arm.gripper_actuator}",
+            ]
         )
     return "\n".join(lines) + "\n"

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .pipeline import run_synthetic, run_video
+from .pipeline import run_bimanual_synthetic, run_bimanual_video
 
 
 def _demo(args: argparse.Namespace) -> int:
@@ -16,9 +16,9 @@ def _demo(args: argparse.Namespace) -> int:
         "replay_mode": args.replay_mode,
     }
     if args.video:
-        _, quality = run_video(args.video, **common)
+        _, quality = run_bimanual_video(args.video, **common)
     else:
-        _, quality = run_synthetic(frames=args.frames, **common)
+        _, quality = run_bimanual_synthetic(frames=args.frames, **common)
     print(json.dumps(quality, indent=2, ensure_ascii=False))
     return 0 if quality["max_ik_error_m"] < 0.20 else 2
 
@@ -53,4 +53,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

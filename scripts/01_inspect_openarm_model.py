@@ -4,7 +4,10 @@ import argparse
 from pathlib import Path
 
 from openarm_retarget.config import load_config
-from openarm_retarget.openarm_model import load_openarm, model_report
+from openarm_retarget.openarm_model import (
+    bimanual_model_report,
+    load_bimanual_openarm,
+)
 
 
 def main() -> int:
@@ -15,8 +18,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    model, info = load_openarm(load_config(args.config))
-    report = model_report(model, info)
+    model, info = load_bimanual_openarm(load_config(args.config))
+    report = bimanual_model_report(model, info)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(report, encoding="utf-8")
     print(report)
@@ -26,4 +29,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

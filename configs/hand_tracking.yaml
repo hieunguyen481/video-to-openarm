@@ -1,8 +1,8 @@
 backend: auto
-handedness: Right
-max_num_hands: 1
+handedness: both
+max_num_hands: 2
+mirror_input: true
 min_detection_confidence: 0.5
 min_tracking_confidence: 0.5
 model_path: models/hand_landmarker.task
 draw_debug: true
-

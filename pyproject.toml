@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openarm-wrist-pinch-retarget"
-version = "0.1.0"
-description = "Video hand tracking to OpenArm wrist and gripper retargeting in MuJoCo"
+version = "0.2.0"
+description = "Bimanual video hand tracking to OpenArm arms and grippers in MuJoCo"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -58,4 +58,3 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["openarm_retarget"]
-

@@ -60,3 +60,52 @@ def generate_hand_pose(
         **{key: value.astype(np.float32) for key, value in arrays.items()},
     }
 
+
+def generate_bimanual_hand_pose(
+    *,
+    frames: int = 180,
+    fps: float = 30.0,
+    noise_std: float = 0.002,
+    seed: int = 7,
+) -> dict[str, np.ndarray]:
+    left = generate_hand_pose(
+        frames=frames,
+        fps=fps,
+        noise_std=noise_std,
+        seed=seed,
+    )
+    right = generate_hand_pose(
+        frames=frames,
+        fps=fps,
+        noise_std=noise_std,
+        seed=seed + 1,
+    )
+
+    phase_shift = max(1, frames // 10)
+    for key in (
+        "wrist",
+        "thumb_tip",
+        "index_tip",
+        "middle_tip",
+        "ring_tip",
+        "pinky_tip",
+        "valid",
+    ):
+        right[key] = np.roll(right[key], phase_shift, axis=0)
+    right["wrist"][:, 0] = 1.0 - right["wrist"][:, 0]
+    for key in ("thumb_tip", "index_tip", "middle_tip", "ring_tip", "pinky_tip"):
+        right[key][:, 0] = 1.0 - right[key][:, 0]
+
+    data: dict[str, np.ndarray] = {"timestamps": left["timestamps"]}
+    for side, pose in (("left", left), ("right", right)):
+        for key in (
+            "valid",
+            "wrist",
+            "thumb_tip",
+            "index_tip",
+            "middle_tip",
+            "ring_tip",
+            "pinky_tip",
+        ):
+            data[f"{side}_{key}"] = np.asarray(pose[key])
+    return data

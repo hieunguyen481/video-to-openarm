@@ -72,7 +72,24 @@ def _select_hand(
     return hands[0], labels[0] if labels else ""
 
 
-def _draw_landmarks(frame: np.ndarray, landmarks: Any) -> None:
+def _select_hands_by_side(
+    hands: list[Any],
+    labels: list[str],
+) -> dict[str, Any | None]:
+    selected: dict[str, Any | None] = {"left": None, "right": None}
+    for hand, label in zip(hands, labels, strict=False):
+        side = label.lower()
+        if side in selected and selected[side] is None:
+            selected[side] = hand
+    return selected
+
+
+def _draw_landmarks(
+    frame: np.ndarray,
+    landmarks: Any,
+    *,
+    color: tuple[int, int, int] = (40, 210, 90),
+) -> None:
     cv2 = _import_cv2()
     height, width = frame.shape[:2]
     points = [
@@ -80,7 +97,7 @@ def _draw_landmarks(frame: np.ndarray, landmarks: Any) -> None:
         for item in landmarks
     ]
     for start, end in HAND_CONNECTIONS:
-        cv2.line(frame, points[start], points[end], (40, 210, 90), 2)
+        cv2.line(frame, points[start], points[end], color, 2)
     for point in points:
         cv2.circle(frame, point, 3, (30, 80, 255), -1)
 
@@ -220,6 +237,8 @@ def extract_video_hand_pose(
             ok, frame = capture.read()
             if not ok:
                 break
+            if bool(config.get("mirror_input", False)):
+                frame = cv2.flip(frame, 1)
             timestamp = frame_index / fps
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hands, labels = detect(rgb, int(round(timestamp * 1000)))
@@ -272,3 +291,108 @@ def extract_video_hand_pose(
     }
     return TrackingResult(data=data, fps=fps, frame_size=(width, height))
 
+
+def extract_video_bimanual_hand_pose(
+    video: str | Path,
+    config: dict[str, Any],
+    *,
+    debug_video: str | Path | None = None,
+) -> TrackingResult:
+    cv2 = _import_cv2()
+    source = Path(video)
+    if not source.is_file():
+        raise FileNotFoundError(f"Input video not found: {source}")
+
+    capture = cv2.VideoCapture(str(source))
+    if not capture.isOpened():
+        raise RuntimeError(f"Cannot open video: {source}")
+    fps = float(capture.get(cv2.CAP_PROP_FPS))
+    if not np.isfinite(fps) or fps <= 0:
+        fps = 30.0
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    bimanual_config = dict(config)
+    bimanual_config["max_num_hands"] = max(2, int(config.get("max_num_hands", 2)))
+    (detector, detect), backend = _create_tracker(bimanual_config)
+    writer = None
+    if debug_video:
+        debug_path = Path(debug_video)
+        debug_path.parent.mkdir(parents=True, exist_ok=True)
+        writer = cv2.VideoWriter(
+            str(debug_path),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height),
+        )
+        if not writer.isOpened():
+            raise RuntimeError(f"Cannot create debug video: {debug_path}")
+
+    values = {
+        side: {name: [] for name in LANDMARK_INDICES}
+        for side in ("left", "right")
+    }
+    valid = {"left": [], "right": []}
+    timestamps: list[float] = []
+    colors = {"left": (50, 205, 50), "right": (255, 150, 30)}
+    frame_index = 0
+
+    try:
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            if bool(config.get("mirror_input", False)):
+                frame = cv2.flip(frame, 1)
+            timestamp = frame_index / fps
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            hands, labels = detect(rgb, int(round(timestamp * 1000)))
+            selected = _select_hands_by_side(hands, labels)
+            timestamps.append(timestamp)
+
+            for side in ("left", "right"):
+                hand = selected[side]
+                valid[side].append(hand is not None)
+                if hand is None:
+                    for name in LANDMARK_INDICES:
+                        values[side][name].append([np.nan, np.nan, np.nan])
+                else:
+                    for name, index in LANDMARK_INDICES.items():
+                        item = hand[index]
+                        values[side][name].append([item.x, item.y, item.z])
+                    if writer is not None:
+                        _draw_landmarks(frame, hand, color=colors[side])
+
+            if writer is not None:
+                status = (
+                    f"{backend} | "
+                    f"L:{'OK' if selected['left'] is not None else 'LOST'} "
+                    f"R:{'OK' if selected['right'] is not None else 'LOST'}"
+                )
+                cv2.putText(
+                    frame,
+                    status,
+                    (16, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),
+                    2,
+                )
+                writer.write(frame)
+            frame_index += 1
+    finally:
+        capture.release()
+        if writer is not None:
+            writer.release()
+        detector.close()
+
+    if not timestamps:
+        raise ValueError(f"Video contains no readable frames: {source}")
+    data: dict[str, np.ndarray] = {
+        "timestamps": np.asarray(timestamps, dtype=np.float64)
+    }
+    for side in ("left", "right"):
+        data[f"{side}_valid"] = np.asarray(valid[side], dtype=bool)
+        for name, points in values[side].items():
+            data[f"{side}_{name}"] = np.asarray(points, dtype=np.float32)
+    return TrackingResult(data=data, fps=fps, frame_size=(width, height))

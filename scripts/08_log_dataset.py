@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from openarm_retarget.dataset import build_dataset
+from openarm_retarget.dataset import build_bimanual_dataset, build_dataset
 from openarm_retarget.io import load_npz, save_npz
 
 
@@ -15,15 +15,19 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
-    dataset = build_dataset(
-        load_npz(args.smooth),
-        load_npz(args.target),
-        load_npz(args.traj),
+    smooth = load_npz(args.smooth)
+    target = load_npz(args.target)
+    trajectory = load_npz(args.traj)
+    is_bimanual = "left_wrist_smooth" in smooth
+    dataset = (
+        build_bimanual_dataset(smooth, target, trajectory)
+        if is_bimanual
+        else build_dataset(smooth, target, trajectory)
     )
     save_npz(
         args.output,
         dataset,
-        stage="dataset",
+        stage="bimanual_dataset" if is_bimanual else "dataset",
         metadata={
             "smooth_source": str(args.smooth),
             "target_source": str(args.target),
@@ -36,4 +40,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

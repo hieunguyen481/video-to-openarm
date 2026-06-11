@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from .openarm_model import OpenArmModelInfo, reset_home
+from .openarm_model import BimanualOpenArmInfo, OpenArmModelInfo, reset_home
 
 
 def _mujoco():
@@ -32,6 +32,15 @@ def _object_id(model: Any, object_type: Any, name: str) -> int:
     if value < 0:
         raise ValueError(f"Model does not contain {name!r}")
     return int(value)
+
+
+def _gripper_target(command: float, control_range: np.ndarray) -> float:
+    lower, upper = np.asarray(control_range, dtype=float)
+    open_target = float(np.clip(0.0, lower, upper))
+    closed_target = float(
+        lower if abs(lower - open_target) > abs(upper - open_target) else upper
+    )
+    return float(np.interp(command, [0.0, 1.0], [open_target, closed_target]))
 
 
 def replay_trajectory(
@@ -100,8 +109,8 @@ def replay_trajectory(
     achieved = np.empty_like(trajectory)
     try:
         for frame_index, desired in enumerate(trajectory):
-            gripper_target = float(
-                np.interp(command[frame_index], [0.0, 1.0], gripper_range)
+            gripper_target = _gripper_target(
+                command[frame_index], gripper_range
             )
             if mode == "kinematic":
                 data.qpos[:] = desired
@@ -110,6 +119,123 @@ def replay_trajectory(
             else:
                 data.ctrl[arm_actuator_ids] = desired[arm_qpos_indices]
                 data.ctrl[gripper_id] = gripper_target
+                for _ in range(substeps):
+                    mujoco.mj_step(model, data)
+            achieved[frame_index] = data.qpos
+
+            if renderer is not None and writer is not None:
+                if camera is None:
+                    renderer.update_scene(data)
+                else:
+                    renderer.update_scene(data, camera=camera)
+                rgb = renderer.render()
+                writer.write(
+                    cv2_module.cvtColor(rgb, cv2_module.COLOR_RGB2BGR)
+                )
+    finally:
+        if writer is not None:
+            writer.release()
+        if renderer is not None:
+            renderer.close()
+    return achieved
+
+
+def replay_bimanual_trajectory(
+    model: Any,
+    info: BimanualOpenArmInfo,
+    qpos: np.ndarray,
+    left_gripper_cmd: np.ndarray,
+    right_gripper_cmd: np.ndarray,
+    *,
+    mode: str = "kinematic",
+    output: str | Path | None = None,
+    fps: float = 30.0,
+    width: int = 960,
+    height: int = 720,
+    camera: str | int | None = None,
+    substeps: int = 8,
+) -> np.ndarray:
+    mujoco = _mujoco()
+    trajectory = np.asarray(qpos, dtype=float)
+    commands = {
+        "left": np.asarray(left_gripper_cmd, dtype=float).reshape(-1),
+        "right": np.asarray(right_gripper_cmd, dtype=float).reshape(-1),
+    }
+    if trajectory.ndim != 2 or trajectory.shape[1] != model.nq:
+        raise ValueError(f"qpos must have shape [T, {model.nq}]")
+    if any(len(command) != len(trajectory) for command in commands.values()):
+        raise ValueError("Both gripper commands must match qpos length")
+    if mode not in {"kinematic", "actuator"}:
+        raise ValueError("mode must be 'kinematic' or 'actuator'")
+    if substeps < 1:
+        raise ValueError("substeps must be positive")
+
+    data = mujoco.MjData(model)
+    reset_home(model, data, info.home_keyframe)
+    arm_qpos_indices: dict[str, np.ndarray] = {}
+    arm_actuator_ids: dict[str, list[int]] = {}
+    gripper_ids: dict[str, int] = {}
+    gripper_qpos_indices: dict[str, int] = {}
+    for side in ("left", "right"):
+        arm = info.sides[side]
+        joint_ids = [
+            _object_id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            for name in arm.arm_joint_names
+        ]
+        arm_qpos_indices[side] = model.jnt_qposadr[joint_ids].astype(int)
+        arm_actuator_ids[side] = [
+            _object_id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
+            for name in arm.arm_actuator_names
+        ]
+        gripper_id = _object_id(
+            model, mujoco.mjtObj.mjOBJ_ACTUATOR, arm.gripper_actuator
+        )
+        gripper_ids[side] = gripper_id
+        gripper_joint_id = int(model.actuator_trnid[gripper_id, 0])
+        gripper_qpos_indices[side] = int(
+            model.jnt_qposadr[gripper_joint_id]
+        )
+
+    renderer = None
+    writer = None
+    cv2_module = None
+    if output:
+        cv2_module = _cv2()
+        destination = Path(output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        model.vis.global_.offwidth = max(model.vis.global_.offwidth, width)
+        model.vis.global_.offheight = max(model.vis.global_.offheight, height)
+        renderer = mujoco.Renderer(model, height=height, width=width)
+        writer = cv2_module.VideoWriter(
+            str(destination),
+            cv2_module.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height),
+        )
+        if not writer.isOpened():
+            raise RuntimeError(f"Cannot create replay video: {destination}")
+
+    achieved = np.empty_like(trajectory)
+    try:
+        for frame_index, desired in enumerate(trajectory):
+            gripper_targets = {
+                side: _gripper_target(
+                    commands[side][frame_index],
+                    model.actuator_ctrlrange[gripper_ids[side]],
+                )
+                for side in ("left", "right")
+            }
+            if mode == "kinematic":
+                data.qpos[:] = desired
+                for side in ("left", "right"):
+                    data.qpos[gripper_qpos_indices[side]] = gripper_targets[side]
+                mujoco.mj_forward(model, data)
+            else:
+                for side in ("left", "right"):
+                    data.ctrl[arm_actuator_ids[side]] = desired[
+                        arm_qpos_indices[side]
+                    ]
+                    data.ctrl[gripper_ids[side]] = gripper_targets[side]
                 for _ in range(substeps):
                     mujoco.mj_step(model, data)
             achieved[frame_index] = data.qpos

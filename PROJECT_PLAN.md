@@ -1,6 +1,22 @@
-# OpenArm Wrist & Pinch Retargeting — Project Plan v2
+# OpenArm Bimanual Wrist & Pinch Retargeting — Project Plan v2
 
 > **Phiên bản:** 2.0 | **Cập nhật triển khai:** 11/06/2026 | **Trạng thái:** MVP implemented
+
+---
+
+## 0. Cập nhật phạm vi bimanual
+
+Phạm vi triển khai cuối cùng đã được mở rộng từ một tay sang **cả hai tay**:
+
+```text
+left human hand  -> 7 left arm joints  + left gripper
+right human hand -> 7 right arm joints + right gripper
+```
+
+Các phần đặc tả một biến `wrist`, `target_pos`, `gripper_cmd` ở tài liệu gốc
+được hiểu là chạy độc lập cho hai namespace `left_*` và `right_*`. IK cuối dùng
+sai số vị trí gộp 6D và Jacobian 14 joint trên cùng một model MuJoCo. Chi tiết
+kết quả thực tế nằm trong `PROJECT_REPORT.md`.
 
 ---
 

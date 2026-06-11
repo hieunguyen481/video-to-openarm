@@ -4,27 +4,27 @@
 [![MuJoCo](https://img.shields.io/badge/MuJoCo-3.x-orange)](https://mujoco.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Pipeline chuyển quỹ đạo cổ tay và động tác pinch từ video/webcam thành chuyển động
-end-effector và lệnh đóng/mở gripper của OpenArm trong MuJoCo.
+Pipeline bimanual chuyển quỹ đạo và động tác pinch của **cả hai tay người**
+thành chuyển động 14 joint, hai end-effector và hai gripper của OpenArm.
 
-**Kết quả synthetic đã kiểm chứng:** IK trung bình **1.70 cm**, lớn nhất
-**2.00 cm**, hội tụ **100%** trên 180 frame.
+**Kết quả synthetic bimanual:** IK trung bình **1.22 cm**, lớn nhất
+**2.00 cm**, hội tụ đồng thời **100%** trên 180 frame.
 
-[Xem video replay MuJoCo](docs/demo/synthetic_openarm_replay.mp4)
+[Xem video replay MuJoCo hai tay](docs/demo/bimanual_openarm_replay.mp4)
 
-![OpenArm replay](docs/images/openarm_replay_frame.png)
+![OpenArm bimanual replay](docs/images/bimanual_replay_frame.png)
 
 ## Kiến trúc
 
 ```mermaid
 flowchart LR
-    A[Video / Webcam] --> B[MediaPipe<br/>21 landmarks]
-    B --> C[Pinch<br/>hysteresis]
-    B --> D[Interpolate + smooth]
-    C --> E[gripper_cmd]
-    D --> F[Retarget + workspace clamp]
-    F --> G[Jacobian DLS IK]
-    G --> H[OpenArm MuJoCo replay]
+    A[Video / Webcam] --> B[MediaPipe<br/>Left + Right hands]
+    B --> C[2 x Pinch<br/>hysteresis]
+    B --> D[2 x Interpolate + smooth]
+    C --> E[left/right gripper_cmd]
+    D --> F[2 x Retarget + workspace clamp]
+    F --> G[Bimanual Jacobian DLS<br/>6D error / 14 joints]
+    G --> H[OpenArm bimanual replay]
     E --> H
     H --> I[NPZ dataset]
     I --> J[Baseline MLP]
@@ -53,7 +53,7 @@ Model HandLandmarker không commit vào Git. Script tải model `Latest` từ
 Chạy toàn bộ pipeline bằng dữ liệu synthetic và render MP4:
 
 ```bash
-openarm-retarget demo --name synthetic --frames 180 --render
+openarm-retarget demo --name bimanual_synthetic --frames 180 --render
 ```
 
 Chạy từ video thật:
@@ -75,7 +75,7 @@ data/datasets/
 outputs/plots/
 outputs/debug_videos/
 outputs/replay_videos/
-outputs/<run_name>_quality_report.json
+outputs/<run_name>_bimanual_quality_report.json
 ```
 
 ## Các bước
@@ -93,8 +93,8 @@ không báo thiếu.
 
 ### Bước 1: Inspect OpenArm
 
-**Mục tiêu:** lấy đúng model, 7 joint, actuator, EE site và keyframe thay vì
-hard-code theo giả định.
+**Mục tiêu:** lấy đúng 14 joint, 14 arm actuator, 2 EE site, 2 gripper actuator
+và keyframe từ model thay vì hard-code.
 
 ```bash
 python scripts/01_inspect_openarm_model.py
@@ -106,15 +106,17 @@ OpenArm MuJoCo 2.0.0 hiện được nhận diện với:
 
 ```text
 model: cell.xml
-ee_site: left_ee_control_point
-arm joints: openarm_left_joint1 ... openarm_left_joint7
-gripper actuator: left_finger1_ctrl
-home EE: [0.401, 0.1535, 1.12] m
+left EE: left_ee_control_point
+right EE: right_ee_control_point
+left joints: openarm_left_joint1 ... openarm_left_joint7
+right joints: openarm_right_joint1 ... openarm_right_joint7
+left/right gripper: left_finger1_ctrl / right_finger1_ctrl
+home EE: left [0.401, 0.1535, 1.12], right [0.401, -0.1535, 1.12] m
 ```
 
 ### Bước 2: Trích xuất hand pose
 
-**Mục tiêu:** lấy wrist và 5 fingertip trên từng frame bằng MediaPipe Tasks.
+**Mục tiêu:** lấy riêng wrist và 5 fingertip của tay trái/phải bằng MediaPipe.
 
 ```bash
 python scripts/02_extract_hand_pose.py \
@@ -123,13 +125,13 @@ python scripts/02_extract_hand_pose.py \
   --debug-video outputs/debug_videos/demo_001_hand_debug.mp4
 ```
 
-**Output:** timestamps, wrist, fingertips, handedness, valid mask và video debug.
+**Output:** `left_*`, `right_*`, hai valid mask và video debug màu riêng từng tay.
 
-**Đạt khi:** `valid_tracking_ratio >= 90%` với video đủ sáng, tay không bị che.
+**Đạt khi:** cả `left_valid` và `right_valid` đạt tối thiểu 90%.
 
 ### Bước 3: Phát hiện pinch
 
-**Mục tiêu:** đổi khoảng cách thumb-fingertip thành lệnh gripper ổn định.
+**Mục tiêu:** tạo `left_gripper_cmd` và `right_gripper_cmd` độc lập.
 
 ```bash
 python scripts/03_detect_pinch.py \
@@ -141,7 +143,8 @@ python scripts/03_detect_pinch.py \
 Hysteresis dùng hai ngưỡng: đóng ở `0.045`, mở ở `0.065`; vùng giữa giữ trạng
 thái trước để tránh nhấp nháy.
 
-![Pinch detection](docs/images/pinch_detection.png)
+![Left pinch](docs/images/left_pinch_detection.png)
+![Right pinch](docs/images/right_pinch_detection.png)
 
 ### Bước 4: Làm mượt cổ tay
 
@@ -168,14 +171,14 @@ python scripts/05_retarget_wrist_to_openarm.py \
   --plot outputs/plots/demo_001_target.png
 ```
 
-Config mặc định điều khiển tay trái và dùng EE home thật của OpenArm v2.
+`configs/bimanual_retarget.yaml` có origin/workspace riêng cho mỗi bên.
 
 ![Target trajectory](docs/images/target_trajectory.png)
 
 ### Bước 6: Giải IK
 
-**Mục tiêu:** biến `target_pos[T,3]` thành `qpos[T,nq]` bằng Jacobian damped
-least-squares, có joint limit và velocity clamp.
+**Mục tiêu:** giải đồng thời sai số 6D của hai EE sang 14 arm joint bằng
+Jacobian damped least-squares, có joint limit và velocity clamp.
 
 ```bash
 python scripts/06_openarm_ik.py \
@@ -186,11 +189,12 @@ python scripts/06_openarm_ik.py \
 
 **Đạt MVP:** mean error `< 5 cm`, không frame nào `> 20 cm`.
 
-![IK error](docs/images/ik_error.png)
+![Left IK error](docs/images/left_ik_error.png)
+![Right IK error](docs/images/right_ik_error.png)
 
 ### Bước 7: Replay MuJoCo
 
-**Mục tiêu:** phát lại arm trajectory và gripper đồng bộ.
+**Mục tiêu:** phát lại cả 14 joint và hai gripper trong cùng timestep.
 
 ```bash
 # Debug chính xác trajectory
@@ -205,7 +209,7 @@ python scripts/07_replay_openarm_mujoco.py \
   --mode actuator
 ```
 
-Video mặc định: `960x720`, `30 FPS`, camera `camera_head_left`.
+Video mặc định: `960x720`, `30 FPS`, camera `camera_ceiling`.
 
 ### Bước 8: Đóng gói dataset
 
@@ -220,7 +224,8 @@ python scripts/08_log_dataset.py \
   --output data/datasets/demo_001_dataset.npz
 ```
 
-Dataset gồm wrist, target, qpos, qvel, EE pose, gripper state và action target.
+Dataset chứa wrist, target, EE pose, 7+7 joint target và gripper state của cả hai
+bên.
 
 ### Bước 9: Baseline policy
 
@@ -232,8 +237,8 @@ python scripts/09_train_baseline_policy.py \
   --output models/openarm_baseline.joblib
 ```
 
-Baseline dùng MLP cho arm joints và logistic classifier cho gripper. Đây là
-sanity check, không thay thế controller IK.
+Baseline dùng MLP cho 14 arm joints và classifier riêng cho mỗi gripper. Đây là
+sanity check, không thay thế bimanual IK.
 
 ## Kiểm thử
 
@@ -241,9 +246,8 @@ sanity check, không thay thế controller IK.
 pytest -q
 ```
 
-Test suite bao phủ schema NPZ, pinch hysteresis, interpolation/smoothing,
-axis mapping, model discovery, IK trên OpenArm thật, replay, dataset và pipeline
-synthetic end-to-end.
+Test suite bao phủ schema hai tay, pinch độc lập, smoothing, retarget, model
+discovery, Jacobian `6x14`, hai gripper, dataset và pipeline bimanual end-to-end.
 
 ## Cấu hình
 
@@ -252,11 +256,9 @@ synthetic end-to-end.
 | `configs/hand_tracking.yaml` | MediaPipe backend, confidence, handedness |
 | `configs/pinch.yaml` | Ngưỡng close/open và invalid policy |
 | `configs/retarget.yaml` | Origin, scale, axis mapping, workspace |
+| `configs/bimanual_retarget.yaml` | Origin/workspace riêng tay trái và phải |
 | `configs/ik.yaml` | Tolerance, damping, step và velocity limit |
-| `configs/openarm.yaml` | MJCF, side, site, actuator, camera, render |
-
-Đổi sang tay phải bằng `side: right`, `ee_site: auto`,
-`gripper_actuator: auto` và cập nhật origin/workspace tương ứng.
+| `configs/openarm.yaml` | MJCF, hai side, EE/gripper discovery, camera, render |
 
 ## Trạng thái
 
@@ -273,4 +275,3 @@ của người vận hành.
 - [OpenArm MuJoCo](https://github.com/enactic/openarm_mujoco)
 - [MuJoCo Python](https://mujoco.readthedocs.io/en/stable/python.html)
 - [MediaPipe Hand Landmarker for Python](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python)
-

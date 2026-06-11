@@ -1,105 +1,139 @@
-# Báo cáo triển khai Video to OpenArm
+# Báo cáo triển khai Video to OpenArm Bimanual
 
-**Ngày nghiệm thu:** 11/06/2026  
+**Ngày cập nhật:** 11/06/2026
 **Môi trường:** Windows, Python 3.12.10, MuJoCo 3.9.0,
 openarm-mujoco 2.0.0, MediaPipe 0.10.35, OpenCV 4.13.0
 
 ## 1. Phạm vi hoàn thành
 
-Pipeline đã triển khai đủ các module trong `PROJECT_PLAN.md`:
+Pipeline hiện điều khiển đồng thời:
 
-1. Kiểm tra môi trường.
-2. Inspect OpenArm MJCF.
-3. Hand tracking video bằng MediaPipe Tasks.
-4. Pinch detection có hysteresis.
-5. Nội suy và smoothing wrist.
-6. Retarget vào workspace OpenArm.
-7. Jacobian damped least-squares IK.
-8. Replay kinematic/actuator và render MP4.
-9. Dataset logging.
-10. Baseline MLP + gripper classifier.
+- 7 joint tay trái + gripper trái.
+- 7 joint tay phải + gripper phải.
+- Hai end-effector trên cùng một trạng thái MuJoCo.
 
-## 2. Kết quả nghiệm thu synthetic
+Luồng xử lý:
+
+```text
+Video hai tay
+-> left/right hand landmarks
+-> left/right pinch + smoothing
+-> left/right robot targets
+-> bimanual Jacobian IK (6D error, 14 joints)
+-> two-gripper replay
+-> bimanual dataset
+```
+
+API một tay cũ vẫn được giữ để tương thích, nhưng CLI `openarm-retarget demo`
+mặc định chạy bimanual.
+
+## 2. Kết quả nghiệm thu bimanual
 
 Lệnh:
 
 ```bash
-openarm-retarget demo --name final_synthetic --frames 180 --render
+openarm-retarget demo --name bimanual_synthetic --frames 180 --render
 ```
 
-| Chỉ số | Kết quả | Tiêu chí |
-|---|---:|---:|
-| Số frame | 180 | 180 |
-| Tracking hợp lệ | 97.22% | >= 90% |
-| Khoảng mất tracking cố ý | 5 frame | Nội suy thành công |
-| Gripper transitions | 4 | 2 close + 2 open |
-| Mean IK error | 1.699 cm | < 5 cm |
-| Max IK error | 1.998 cm | < 20 cm |
-| IK converged | 100% | Không diverge |
-| Replay video | 180 frame, 960x720, 30 FPS | Đọc lại được |
-| Dataset | 180 sample | Không NaN/Inf |
+| Chỉ số | Tay trái | Tay phải | Tiêu chí |
+|---|---:|---:|---:|
+| Tracking hợp lệ | 97.22% | 97.22% | >= 90% |
+| Gripper transitions | 4 | 4 | 2 close + 2 open |
+| Mean IK error | 1.158 cm | 1.282 cm | < 5 cm |
+| Max IK error | 1.981 cm | 1.999 cm | < 20 cm |
+| IK đồng thời hội tụ | 100% | 100% | Không diverge |
 
-Workspace target:
+Chỉ số gộp:
 
 ```text
-min = [0.3022, 0.1058, 1.0643] m
-max = [0.4942, 0.1535, 1.1833] m
+mean IK error = 1.220 cm
+max IK error  = 1.999 cm
+frames        = 180
+video         = 960x720, 30 FPS
 ```
 
-Toàn bộ target nằm trong giới hạn `configs/retarget.yaml`.
-
-## 3. Model OpenArm được xác nhận
+## 3. OpenArm model
 
 ```text
-MJCF: cell.xml
-nq/nv/nu: 19/19/17
-EE site: left_ee_control_point
-Arm joints: openarm_left_joint1 ... openarm_left_joint7
-Arm actuators: left_joint1_ctrl ... left_joint7_ctrl
-Gripper actuator: left_finger1_ctrl
-Home EE: [0.401, 0.1535, 1.12] m
+LEFT
+  joints: openarm_left_joint1 ... openarm_left_joint7
+  EE: left_ee_control_point
+  gripper: left_finger1_ctrl
+  home: [0.401, 0.1535, 1.12] m
+
+RIGHT
+  joints: openarm_right_joint1 ... openarm_right_joint7
+  EE: right_ee_control_point
+  gripper: right_finger1_ctrl
+  home: [0.401, -0.1535, 1.12] m
 ```
 
-Origin trong kế hoạch cũ (`z=0.35`) không khớp OpenArm v2. Config triển khai đã
-được hiệu chỉnh theo home pose thực tế (`z=1.12`).
+Gripper phải dùng control range âm. Replay đã được sửa để `0=open`, `1=closed`
+cho cả hai bên thay vì nội suy trực tiếp theo thứ tự min/max.
 
-## 4. Baseline learning
+## 4. Data schema
+
+Hand pose:
+
+```text
+left_valid, left_wrist, left_thumb_tip, ...
+right_valid, right_wrist, right_thumb_tip, ...
+```
+
+Robot trajectory:
+
+```text
+qpos [T, 19]
+left_arm_qpos [T, 7]
+right_arm_qpos [T, 7]
+left_ee_pos/right_ee_pos [T, 3]
+left_gripper_cmd/right_gripper_cmd [T]
+```
+
+Dataset action:
+
+```text
+action_left_arm_joint_target [T, 7]
+action_right_arm_joint_target [T, 7]
+action_left_gripper_cmd [T, 1]
+action_right_gripper_cmd [T, 1]
+```
+
+## 5. Baseline
 
 Temporal split: 143 train / 36 test sample.
 
 | Chỉ số | Kết quả |
 |---|---:|
-| Arm RMSE | 0.1521 rad |
-| Gripper accuracy | 97.22% |
+| 14-joint arm RMSE | 0.2315 rad |
+| Left gripper accuracy | 63.89% |
+| Right gripper accuracy | 75.00% |
 
-Baseline chỉ dùng để xác nhận dataset có thể học; IK vẫn là controller chính.
+Đây chỉ là sanity check trên một trajectory synthetic nhỏ. Các chỉ số gripper
+chưa đủ để xem là policy học tốt; cần nhiều episode video thật và dữ liệu cân
+bằng hơn.
 
-## 5. Kiểm thử
+## 6. Kiểm thử và artefact
 
 ```text
-12 passed
+19 passed
 ```
 
-Các test gồm unit, integration trên model OpenArm thật và pipeline synthetic
-end-to-end. GitHub Actions chạy Python 3.12 với dependency simulation.
-
-## 6. Artefact trực quan
-
-- [Video MuJoCo synthetic](docs/demo/synthetic_openarm_replay.mp4)
-- [Pinch detection](docs/images/pinch_detection.png)
-- [Wrist smoothing](docs/images/wrist_smoothing.png)
-- [Target trajectory](docs/images/target_trajectory.png)
-- [IK error](docs/images/ik_error.png)
+- [Video bimanual MuJoCo](docs/demo/bimanual_openarm_replay.mp4)
+- [Frame hai tay](docs/images/bimanual_replay_frame.png)
+- [Left pinch](docs/images/left_pinch_detection.png)
+- [Right pinch](docs/images/right_pinch_detection.png)
+- [Left IK error](docs/images/left_ik_error.png)
+- [Right IK error](docs/images/right_ik_error.png)
 
 ## 7. Giới hạn còn lại
 
-Workspace ban đầu không có video tay thật. Vì vậy:
+Chưa có video hai tay thật trong workspace, nên chưa đo được:
 
-- MediaPipe Tasks, model và video code path đã khởi tạo thành công.
-- Chưa thể đo `valid_tracking_ratio` hoặc tune threshold trên người/camera thật.
-- Demo synthetic không thay thế bước calibration theo camera và khoảng cách tay.
+- Tỷ lệ MediaPipe giữ đúng handedness khi hai tay giao nhau.
+- Ngưỡng pinch phù hợp với camera/người vận hành thật.
+- Collision giữa hai tay robot khi target tiến gần nhau.
+- Chất lượng actuator replay khi chuyển động nhanh.
 
-Khi thêm video thật vào `data/raw_videos/`, lệnh end-to-end trong README tạo
-quality report riêng để quyết định có cần chỉnh `pinch.yaml` và
-`retarget.yaml` hay không.
-
+`mirror_input: true` được bật mặc định để webcam hoạt động theo kiểu gương.
+Nếu nguồn video đã mirror sẵn, đổi thành `false`.

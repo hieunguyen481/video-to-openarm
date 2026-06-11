@@ -1,0 +1,274 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+LANDMARK_INDICES = {
+    "wrist": 0,
+    "thumb_tip": 4,
+    "index_tip": 8,
+    "middle_tip": 12,
+    "ring_tip": 16,
+    "pinky_tip": 20,
+}
+
+HAND_CONNECTIONS = (
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 4),
+    (0, 5),
+    (5, 6),
+    (6, 7),
+    (7, 8),
+    (5, 9),
+    (9, 10),
+    (10, 11),
+    (11, 12),
+    (9, 13),
+    (13, 14),
+    (14, 15),
+    (15, 16),
+    (13, 17),
+    (17, 18),
+    (18, 19),
+    (19, 20),
+    (0, 17),
+)
+
+
+@dataclass(frozen=True)
+class TrackingResult:
+    data: dict[str, np.ndarray]
+    fps: float
+    frame_size: tuple[int, int]
+
+
+def _import_cv2():
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError(
+            "OpenCV is required for video tracking. Install with: "
+            'python -m pip install -e ".[vision]"'
+        ) from exc
+    return cv2
+
+
+def _select_hand(
+    hands: list[Any],
+    labels: list[str],
+    preferred: str | None,
+) -> tuple[Any | None, str]:
+    if not hands:
+        return None, ""
+    if preferred:
+        for hand, label in zip(hands, labels, strict=False):
+            if label.lower() == preferred.lower():
+                return hand, label
+    return hands[0], labels[0] if labels else ""
+
+
+def _draw_landmarks(frame: np.ndarray, landmarks: Any) -> None:
+    cv2 = _import_cv2()
+    height, width = frame.shape[:2]
+    points = [
+        (int(np.clip(item.x, 0, 1) * (width - 1)), int(np.clip(item.y, 0, 1) * (height - 1)))
+        for item in landmarks
+    ]
+    for start, end in HAND_CONNECTIONS:
+        cv2.line(frame, points[start], points[end], (40, 210, 90), 2)
+    for point in points:
+        cv2.circle(frame, point, 3, (30, 80, 255), -1)
+
+
+def _task_tracker(config: dict[str, Any]):
+    try:
+        import mediapipe as mp
+        from mediapipe.tasks import python
+        from mediapipe.tasks.python import vision
+    except ImportError as exc:
+        raise RuntimeError("MediaPipe Tasks is not available") from exc
+
+    model_path = Path(config.get("model_path", "models/hand_landmarker.task"))
+    if not model_path.is_file():
+        raise FileNotFoundError(
+            f"MediaPipe task model not found: {model_path}. "
+            "Download hand_landmarker.task and set model_path in the config."
+        )
+    options = vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(model_path)),
+        running_mode=vision.RunningMode.VIDEO,
+        num_hands=int(config.get("max_num_hands", 1)),
+        min_hand_detection_confidence=float(
+            config.get("min_detection_confidence", 0.5)
+        ),
+        min_tracking_confidence=float(config.get("min_tracking_confidence", 0.5)),
+    )
+    detector = vision.HandLandmarker.create_from_options(options)
+
+    def detect(rgb: np.ndarray, timestamp_ms: int):
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = detector.detect_for_video(image, timestamp_ms)
+        labels = [
+            categories[0].category_name if categories else ""
+            for categories in result.handedness
+        ]
+        return result.hand_landmarks, labels
+
+    return detector, detect
+
+
+def _legacy_tracker(config: dict[str, Any]):
+    try:
+        import mediapipe as mp
+    except ImportError as exc:
+        raise RuntimeError("MediaPipe is not installed") from exc
+    if not hasattr(mp, "solutions"):
+        raise RuntimeError("This MediaPipe build does not include the legacy solutions API")
+
+    detector = mp.solutions.hands.Hands(
+        static_image_mode=False,
+        max_num_hands=int(config.get("max_num_hands", 1)),
+        min_detection_confidence=float(
+            config.get("min_detection_confidence", 0.5)
+        ),
+        min_tracking_confidence=float(config.get("min_tracking_confidence", 0.5)),
+    )
+
+    def detect(rgb: np.ndarray, timestamp_ms: int):
+        del timestamp_ms
+        result = detector.process(rgb)
+        hands = [
+            item.landmark for item in (result.multi_hand_landmarks or [])
+        ]
+        labels = [
+            item.classification[0].label
+            for item in (result.multi_handedness or [])
+        ]
+        return hands, labels
+
+    return detector, detect
+
+
+def _create_tracker(config: dict[str, Any]):
+    backend = str(config.get("backend", "auto")).lower()
+    errors: list[str] = []
+    if backend in {"auto", "tasks"}:
+        try:
+            return _task_tracker(config), "tasks"
+        except (RuntimeError, FileNotFoundError) as exc:
+            errors.append(str(exc))
+            if backend == "tasks":
+                raise
+    if backend in {"auto", "legacy"}:
+        try:
+            return _legacy_tracker(config), "legacy"
+        except RuntimeError as exc:
+            errors.append(str(exc))
+            if backend == "legacy":
+                raise
+    raise RuntimeError("No MediaPipe backend available:\n- " + "\n- ".join(errors))
+
+
+def extract_video_hand_pose(
+    video: str | Path,
+    config: dict[str, Any],
+    *,
+    debug_video: str | Path | None = None,
+) -> TrackingResult:
+    cv2 = _import_cv2()
+    source = Path(video)
+    if not source.is_file():
+        raise FileNotFoundError(f"Input video not found: {source}")
+
+    capture = cv2.VideoCapture(str(source))
+    if not capture.isOpened():
+        raise RuntimeError(f"Cannot open video: {source}")
+    fps = float(capture.get(cv2.CAP_PROP_FPS))
+    if not np.isfinite(fps) or fps <= 0:
+        fps = 30.0
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    (detector, detect), backend = _create_tracker(config)
+    writer = None
+    if debug_video:
+        debug_path = Path(debug_video)
+        debug_path.parent.mkdir(parents=True, exist_ok=True)
+        writer = cv2.VideoWriter(
+            str(debug_path),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height),
+        )
+        if not writer.isOpened():
+            raise RuntimeError(f"Cannot create debug video: {debug_path}")
+
+    values = {name: [] for name in LANDMARK_INDICES}
+    timestamps: list[float] = []
+    valid: list[bool] = []
+    selected_labels: list[str] = []
+    preferred = config.get("handedness")
+    frame_index = 0
+
+    try:
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            timestamp = frame_index / fps
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            hands, labels = detect(rgb, int(round(timestamp * 1000)))
+            hand, label = _select_hand(hands, labels, preferred)
+
+            timestamps.append(timestamp)
+            valid.append(hand is not None)
+            selected_labels.append(label)
+            if hand is None:
+                for name in LANDMARK_INDICES:
+                    values[name].append([np.nan, np.nan, np.nan])
+            else:
+                for name, index in LANDMARK_INDICES.items():
+                    item = hand[index]
+                    values[name].append([item.x, item.y, item.z])
+                if writer is not None:
+                    _draw_landmarks(frame, hand)
+
+            if writer is not None:
+                status = f"{backend} | {'TRACKED' if hand is not None else 'LOST'}"
+                cv2.putText(
+                    frame,
+                    status,
+                    (16, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),
+                    2,
+                )
+                writer.write(frame)
+            frame_index += 1
+    finally:
+        capture.release()
+        if writer is not None:
+            writer.release()
+        detector.close()
+
+    if not timestamps:
+        raise ValueError(f"Video contains no readable frames: {source}")
+    data = {
+        "timestamps": np.asarray(timestamps, dtype=np.float64),
+        "valid": np.asarray(valid, dtype=bool),
+        "handedness": np.asarray(
+            next((label for label in selected_labels if label), preferred or "Unknown")
+        ),
+        **{
+            name: np.asarray(points, dtype=np.float32)
+            for name, points in values.items()
+        },
+    }
+    return TrackingResult(data=data, fps=fps, frame_size=(width, height))
+

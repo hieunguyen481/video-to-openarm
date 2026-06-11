@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .camera_recorder import record_camera
+from .comparison_video import create_comparison_video
 from .config import load_config
 from .pipeline import run_bimanual_synthetic, run_bimanual_video
 from .viewer import launch_viewer
@@ -52,6 +53,23 @@ def _record(args: argparse.Namespace) -> int:
     print(
         f"Saved {result.frames} frames ({result.duration_seconds:.1f}s) "
         f"at {result.width}x{result.height}, {result.fps:.1f} FPS\n"
+        f"{result.output}"
+    )
+    return 0
+
+
+def _compare(args: argparse.Namespace) -> int:
+    result = create_comparison_video(
+        args.human,
+        args.robot,
+        args.output,
+        panel_width=args.panel_width,
+        panel_height=args.panel_height,
+        overwrite=args.overwrite,
+    )
+    print(
+        f"Saved synchronized comparison: {result.frames} frames, "
+        f"{result.width}x{result.height}, {result.fps:.1f} FPS\n"
         f"{result.output}"
     )
     return 0
@@ -115,6 +133,17 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--overwrite", action="store_true")
     record.add_argument("--no-mirror-preview", action="store_true")
     record.set_defaults(handler=_record)
+
+    compare = subparsers.add_parser(
+        "compare", help="Compose human tracking and robot replay side by side"
+    )
+    compare.add_argument("--human", type=Path, required=True)
+    compare.add_argument("--robot", type=Path, required=True)
+    compare.add_argument("--output", type=Path, required=True)
+    compare.add_argument("--panel-width", type=int, default=960)
+    compare.add_argument("--panel-height", type=int, default=720)
+    compare.add_argument("--overwrite", action="store_true")
+    compare.set_defaults(handler=_compare)
     return parser
 
 

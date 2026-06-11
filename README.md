@@ -84,6 +84,18 @@ openarm-retarget record --output data/raw_videos/demo_001.mp4 --overwrite
 Preview được mirror để dễ thao tác, nhưng file video lưu khung hình gốc. Pipeline
 sẽ mirror đúng một lần theo `configs/hand_tracking.yaml`.
 
+Ghép tracking người và robot thành một video đồng bộ:
+
+```bash
+openarm-retarget compare \
+  --human outputs/debug_videos/demo_001_real_bimanual_hand_debug.mp4 \
+  --robot outputs/replay_videos/demo_001_real_bimanual_openarm.mp4 \
+  --output outputs/comparison/demo_001_human_vs_robot.mp4
+```
+
+Kết quả hiển thị tay người bên trái và OpenArm bên phải trong cùng một frame,
+chung timeline nên không bị cửa sổ sau che cửa sổ trước.
+
 Mở môi trường MuJoCo tương tác:
 
 ```bash

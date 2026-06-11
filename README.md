@@ -84,6 +84,13 @@ openarm-retarget record --output data/raw_videos/demo_001.mp4 --overwrite
 Preview được mirror để dễ thao tác, nhưng file video lưu khung hình gốc. Pipeline
 sẽ mirror đúng một lần theo `configs/hand_tracking.yaml`.
 
+Camera cần đặt **đối diện người**, gần ngang tầm bàn tay. Không đặt camera từ
+trên xuống. Ánh xạ mặc định hiểu:
+
+- ngang trên ảnh -> trái/phải của robot;
+- dọc trên ảnh -> cao/thấp của robot;
+- kích thước lòng bàn tay -> tiến/lùi của robot.
+
 Ghép tracking người và robot thành một video đồng bộ:
 
 ```bash
@@ -212,6 +219,9 @@ Hysteresis dùng hai ngưỡng: đóng ở `0.045`, mở ở `0.065`; vùng gi�
 thái trước. Mỗi chuyển trạng thái phải ổn định ít nhất 3 frame để loại xung
 pinch giả khi tay vừa vào khung.
 
+Khoảng cách pinch là khoảng cách nhỏ nhất từ đầu ngón cái đến đầu ngón trỏ,
+giữa, áp út hoặc út. Quy ước lệnh là `0 = gripper mở`, `1 = gripper đóng`.
+
 ![Left pinch](docs/images/left_pinch_detection.png)
 ![Right pinch](docs/images/right_pinch_detection.png)
 
@@ -240,7 +250,8 @@ python scripts/05_retarget_wrist_to_openarm.py \
   --plot outputs/plots/demo_001_target.png
 ```
 
-`configs/bimanual_retarget.yaml` có origin/workspace riêng cho mỗi bên.
+`configs/bimanual_retarget.yaml` có origin/workspace riêng cho mỗi bên và ánh
+xạ mặc định cho camera đặt đối diện người.
 
 ![Target trajectory](docs/images/target_trajectory.png)
 
@@ -278,7 +289,8 @@ python scripts/07_replay_openarm_mujoco.py \
   --mode actuator
 ```
 
-Video mặc định: `960x720`, `30 FPS`, camera `camera_ceiling`.
+Video mặc định: `960x720`, `30 FPS`, camera tự do nhìn chính diện hai tay
+robot. Replay động học gán đồng thời cả hai finger joint của mỗi gripper.
 
 ### Bước 8: Đóng gói dataset
 

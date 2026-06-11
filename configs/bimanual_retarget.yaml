@@ -5,9 +5,9 @@ left:
     y: 0.6
     z: 0.6
   axis_mapping:
-    human_x: x
+    human_x: y
     human_y: z_negative
-    human_z: y
+    human_z: x_negative
   workspace_limit:
     x: [0.15, 0.70]
     y: [0.00, 0.50]
@@ -19,9 +19,9 @@ right:
     y: 0.6
     z: 0.6
   axis_mapping:
-    human_x: x
+    human_x: y
     human_y: z_negative
-    human_z: y
+    human_z: x_negative
   workspace_limit:
     x: [0.15, 0.70]
     y: [-0.50, 0.00]

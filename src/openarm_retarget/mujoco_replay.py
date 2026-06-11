@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -36,11 +37,51 @@ def _object_id(model: Any, object_type: Any, name: str) -> int:
 
 def _gripper_target(command: float, control_range: np.ndarray) -> float:
     lower, upper = np.asarray(control_range, dtype=float)
-    open_target = float(np.clip(0.0, lower, upper))
-    closed_target = float(
-        lower if abs(lower - open_target) > abs(upper - open_target) else upper
+    closed_target = float(np.clip(0.0, lower, upper))
+    open_target = float(
+        lower if abs(lower - closed_target) > abs(upper - closed_target) else upper
     )
     return float(np.interp(command, [0.0, 1.0], [open_target, closed_target]))
+
+
+def _gripper_qpos_indices(model: Any, actuator_id: int) -> np.ndarray:
+    mujoco = _mujoco()
+    primary_joint_id = int(model.actuator_trnid[actuator_id, 0])
+    primary_name = mujoco.mj_id2name(
+        model, mujoco.mjtObj.mjOBJ_JOINT, primary_joint_id
+    )
+    joint_ids = [primary_joint_id]
+    if primary_name and primary_name.endswith("joint1"):
+        secondary_name = f"{primary_name[:-1]}2"
+        secondary_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_JOINT, secondary_name
+        )
+        if secondary_id >= 0:
+            joint_ids.append(int(secondary_id))
+    return model.jnt_qposadr[joint_ids].astype(int)
+
+
+def _render_camera(
+    model: Any, camera: str | int | Mapping[str, Any] | None
+) -> Any:
+    if not isinstance(camera, Mapping):
+        return camera
+    if camera.get("mode", "free") != "free":
+        raise ValueError("Configured render camera mode must be 'free'")
+
+    mujoco = _mujoco()
+    render_camera = mujoco.MjvCamera()
+    mujoco.mjv_defaultFreeCamera(model, render_camera)
+    render_camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+    if "lookat" in camera:
+        lookat = np.asarray(camera["lookat"], dtype=float)
+        if lookat.shape != (3,):
+            raise ValueError("Render camera lookat must contain three values")
+        render_camera.lookat[:] = lookat
+    for field in ("distance", "azimuth", "elevation"):
+        if field in camera:
+            setattr(render_camera, field, float(camera[field]))
+    return render_camera
 
 
 def replay_trajectory(
@@ -54,7 +95,7 @@ def replay_trajectory(
     fps: float = 30.0,
     width: int = 960,
     height: int = 720,
-    camera: str | int | None = None,
+    camera: str | int | Mapping[str, Any] | None = None,
     substeps: int = 8,
 ) -> np.ndarray:
     mujoco = _mujoco()
@@ -83,8 +124,7 @@ def replay_trajectory(
     gripper_id = _object_id(
         model, mujoco.mjtObj.mjOBJ_ACTUATOR, info.gripper_actuator
     )
-    gripper_joint_id = int(model.actuator_trnid[gripper_id, 0])
-    gripper_qpos_index = int(model.jnt_qposadr[gripper_joint_id])
+    gripper_qpos_indices = _gripper_qpos_indices(model, gripper_id)
     gripper_range = model.actuator_ctrlrange[gripper_id]
 
     renderer = None
@@ -97,6 +137,7 @@ def replay_trajectory(
         model.vis.global_.offwidth = max(model.vis.global_.offwidth, width)
         model.vis.global_.offheight = max(model.vis.global_.offheight, height)
         renderer = mujoco.Renderer(model, height=height, width=width)
+        render_camera = _render_camera(model, camera)
         writer = cv2_module.VideoWriter(
             str(destination),
             cv2_module.VideoWriter_fourcc(*"mp4v"),
@@ -114,7 +155,7 @@ def replay_trajectory(
             )
             if mode == "kinematic":
                 data.qpos[:] = desired
-                data.qpos[gripper_qpos_index] = gripper_target
+                data.qpos[gripper_qpos_indices] = gripper_target
                 mujoco.mj_forward(model, data)
             else:
                 data.ctrl[arm_actuator_ids] = desired[arm_qpos_indices]
@@ -124,10 +165,10 @@ def replay_trajectory(
             achieved[frame_index] = data.qpos
 
             if renderer is not None and writer is not None:
-                if camera is None:
+                if render_camera is None:
                     renderer.update_scene(data)
                 else:
-                    renderer.update_scene(data, camera=camera)
+                    renderer.update_scene(data, camera=render_camera)
                 rgb = renderer.render()
                 writer.write(
                     cv2_module.cvtColor(rgb, cv2_module.COLOR_RGB2BGR)
@@ -152,7 +193,7 @@ def replay_bimanual_trajectory(
     fps: float = 30.0,
     width: int = 960,
     height: int = 720,
-    camera: str | int | None = None,
+    camera: str | int | Mapping[str, Any] | None = None,
     substeps: int = 8,
 ) -> np.ndarray:
     mujoco = _mujoco()
@@ -175,7 +216,7 @@ def replay_bimanual_trajectory(
     arm_qpos_indices: dict[str, np.ndarray] = {}
     arm_actuator_ids: dict[str, list[int]] = {}
     gripper_ids: dict[str, int] = {}
-    gripper_qpos_indices: dict[str, int] = {}
+    gripper_qpos_indices: dict[str, np.ndarray] = {}
     for side in ("left", "right"):
         arm = info.sides[side]
         joint_ids = [
@@ -191,9 +232,8 @@ def replay_bimanual_trajectory(
             model, mujoco.mjtObj.mjOBJ_ACTUATOR, arm.gripper_actuator
         )
         gripper_ids[side] = gripper_id
-        gripper_joint_id = int(model.actuator_trnid[gripper_id, 0])
-        gripper_qpos_indices[side] = int(
-            model.jnt_qposadr[gripper_joint_id]
+        gripper_qpos_indices[side] = _gripper_qpos_indices(
+            model, gripper_id
         )
 
     renderer = None
@@ -206,6 +246,7 @@ def replay_bimanual_trajectory(
         model.vis.global_.offwidth = max(model.vis.global_.offwidth, width)
         model.vis.global_.offheight = max(model.vis.global_.offheight, height)
         renderer = mujoco.Renderer(model, height=height, width=width)
+        render_camera = _render_camera(model, camera)
         writer = cv2_module.VideoWriter(
             str(destination),
             cv2_module.VideoWriter_fourcc(*"mp4v"),
@@ -241,10 +282,10 @@ def replay_bimanual_trajectory(
             achieved[frame_index] = data.qpos
 
             if renderer is not None and writer is not None:
-                if camera is None:
+                if render_camera is None:
                     renderer.update_scene(data)
                 else:
-                    renderer.update_scene(data, camera=camera)
+                    renderer.update_scene(data, camera=render_camera)
                 rgb = renderer.render()
                 writer.write(
                     cv2_module.cvtColor(rgb, cv2_module.COLOR_RGB2BGR)

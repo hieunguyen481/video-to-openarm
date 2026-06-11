@@ -205,6 +205,23 @@ Video thật phát hiện hai vấn đề mà synthetic không thể hiện:
 2. Tọa độ `z` của wrist landmark là mốc tương đối nên gần như không đổi. Đã
    thay tín hiệu độ sâu bằng `palm_scale` (kích thước lòng bàn tay trên ảnh).
    Sau sửa, target depth thay đổi khoảng 6.5 cm bên trái và 9.7 cm bên phải.
+3. Quy ước gripper của model OpenArm ngược với giả định ban đầu: joint `0` là
+   đóng, còn biên `+0.7854` bên trái và `-0.7854` bên phải là mở. Replay đã
+   sửa thành `gripper_cmd = 0` mở, `gripper_cmd = 1` đóng và gán đồng thời hai
+   finger joint.
+4. Camera thật đặt đối diện người. Ánh xạ retarget đã đổi sang ngang ảnh ->
+   trái/phải robot, dọc ảnh -> cao/thấp, `palm_scale` -> tiến/lùi. Camera
+   render MuJoCo cũng đổi từ góc trần sang góc nhìn chính diện.
+
+Kiểm tra lại với `demo_002.mp4`:
+
+```text
+left tracking  = 99.72%
+right tracking = 99.16%
+mean IK error  = 1.23 cm
+max IK error   = 2.00 cm
+converged      = 100%
+```
 
 Artefact:
 
@@ -212,4 +229,5 @@ Artefact:
 outputs/debug_videos/demo_001_real_bimanual_hand_debug.mp4
 outputs/replay_videos/demo_001_real_bimanual_openarm.mp4
 outputs/demo_001_real_bimanual_quality_report.json
+outputs/comparison/demo_002_human_vs_robot.mp4
 ```

@@ -49,6 +49,15 @@ Chưa hoàn thành:
 - Calibration bằng video hai tay thật.
 - Collision avoidance giữa hai cánh tay.
 
+Đã bổ sung công cụ thu video hai tay từ webcam:
+
+```bash
+openarm-retarget record
+```
+
+Đây là bước thu dữ liệu MP4 vào `data/raw_videos/`, chưa phải live
+teleoperation.
+
 ## 2. Kết quả nghiệm thu bimanual
 
 Lệnh:

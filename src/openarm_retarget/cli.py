@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .camera_recorder import record_camera
 from .config import load_config
 from .pipeline import run_bimanual_synthetic, run_bimanual_video
 from .viewer import launch_viewer
@@ -33,6 +34,27 @@ def _viewer(args: argparse.Namespace) -> int:
         walls=args.walls,
         no_sheet=args.no_sheet,
     )
+
+
+def _record(args: argparse.Namespace) -> int:
+    result = record_camera(
+        args.output,
+        camera=args.camera,
+        width=args.width,
+        height=args.height,
+        fps=args.fps,
+        backend=args.backend,
+        mirror_preview=not args.no_mirror_preview,
+        auto_start=args.auto_start,
+        duration=args.duration,
+        overwrite=args.overwrite,
+    )
+    print(
+        f"Saved {result.frames} frames ({result.duration_seconds:.1f}s) "
+        f"at {result.width}x{result.height}, {result.fps:.1f} FPS\n"
+        f"{result.output}"
+    )
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,6 +88,33 @@ def build_parser() -> argparse.ArgumentParser:
     viewer.add_argument("--walls", action="store_true")
     viewer.add_argument("--no-sheet", action="store_true")
     viewer.set_defaults(handler=_viewer)
+
+    record = subparsers.add_parser(
+        "record", help="Record a two-hand video from the computer camera"
+    )
+    record.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/raw_videos/demo_001.mp4"),
+    )
+    record.add_argument("--camera", type=int, default=0)
+    record.add_argument("--width", type=int, default=1280)
+    record.add_argument("--height", type=int, default=720)
+    record.add_argument("--fps", type=float, default=30.0)
+    record.add_argument(
+        "--backend",
+        choices=("auto", "any", "dshow", "msmf", "v4l2"),
+        default="auto",
+    )
+    record.add_argument(
+        "--duration",
+        type=float,
+        help="Stop after this many recorded seconds",
+    )
+    record.add_argument("--auto-start", action="store_true")
+    record.add_argument("--overwrite", action="store_true")
+    record.add_argument("--no-mirror-preview", action="store_true")
+    record.set_defaults(handler=_record)
     return parser
 
 

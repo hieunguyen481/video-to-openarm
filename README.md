@@ -50,6 +50,40 @@ Model HandLandmarker không commit vào Git. Script tải model `Latest` từ
 
 ## Chạy nhanh
 
+Quay video hai tay bằng camera máy tính:
+
+```bash
+openarm-retarget record
+```
+
+Trong cửa sổ camera:
+
+- `SPACE`: bắt đầu hoặc tạm dừng quay.
+- `Q` hoặc `ESC`: kết thúc và lưu.
+
+File mặc định: `data/raw_videos/demo_001.mp4`.
+
+Quay tự động 20 giây:
+
+```bash
+openarm-retarget record --auto-start --duration 20
+```
+
+Nếu máy có nhiều camera:
+
+```bash
+openarm-retarget record --camera 1
+```
+
+Ghi đè một video đã tồn tại:
+
+```bash
+openarm-retarget record --output data/raw_videos/demo_001.mp4 --overwrite
+```
+
+Preview được mirror để dễ thao tác, nhưng file video lưu khung hình gốc. Pipeline
+sẽ mirror đúng một lần theo `configs/hand_tracking.yaml`.
+
 Mở môi trường MuJoCo tương tác:
 
 ```bash

@@ -92,3 +92,30 @@ def plot_target(target: np.ndarray, path: str | Path) -> Path:
     plt.close(figure)
     return destination
 
+
+def plot_ik_error(
+    timestamps: np.ndarray,
+    error: np.ndarray,
+    path: str | Path,
+    *,
+    tolerance: float,
+) -> Path:
+    plt = _pyplot()
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    figure, axis = plt.subplots(figsize=(10, 4))
+    axis.plot(timestamps, np.asarray(error) * 100.0, color="#dc2626")
+    axis.axhline(
+        tolerance * 100.0,
+        color="#16a34a",
+        linestyle="--",
+        label=f"tolerance ({tolerance * 100:.1f} cm)",
+    )
+    axis.set(xlabel="time (s)", ylabel="position error (cm)", title="OpenArm IK error")
+    axis.grid(alpha=0.25)
+    axis.legend()
+    figure.tight_layout()
+    figure.savefig(destination, dpi=150)
+    plt.close(figure)
+    return destination
+

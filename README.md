@@ -81,13 +81,16 @@ Ghi đè một video đã tồn tại:
 openarm-retarget record --output data/raw_videos/demo_001.mp4 --overwrite
 ```
 
-Preview được mirror để dễ thao tác, nhưng file video lưu khung hình gốc. Pipeline
-sẽ mirror đúng một lần theo `configs/hand_tracking.yaml`.
+Preview được mirror để dễ thao tác, nhưng file video lưu khung hình gốc.
+Pipeline giữ nguyên ảnh gốc để MediaPipe gán đúng tay trái/phải của người khi
+camera đặt đối diện.
 
 Camera cần đặt **đối diện người**, gần ngang tầm bàn tay. Không đặt camera từ
 trên xuống. Ánh xạ mặc định hiểu:
 
-- ngang trên ảnh -> trái/phải của robot;
+- phía trái khung video -> robot trái, phía phải khung video -> robot phải;
+- tay phải thật -> robot trái và tay trái thật -> robot phải do camera đối diện;
+- chuyển động ngang được đảo dấu để hai video đi cùng hướng;
 - dọc trên ảnh -> cao/thấp của robot;
 - kích thước lòng bàn tay -> tiến/lùi của robot.
 
@@ -250,8 +253,9 @@ python scripts/05_retarget_wrist_to_openarm.py \
   --plot outputs/plots/demo_001_target.png
 ```
 
-`configs/bimanual_retarget.yaml` có origin/workspace riêng cho mỗi bên và ánh
-xạ mặc định cho camera đặt đối diện người.
+`configs/hand_tracking.yaml` dùng `swap_left_right: true`, còn
+`configs/bimanual_retarget.yaml` đảo dấu trục ngang. Hai cấu hình này làm cho
+bên trái/phải của video camera đối diện khớp với bên trái/phải trong MuJoCo.
 
 ![Target trajectory](docs/images/target_trajectory.png)
 
@@ -289,8 +293,8 @@ python scripts/07_replay_openarm_mujoco.py \
   --mode actuator
 ```
 
-Video mặc định: `960x720`, `30 FPS`, camera tự do nhìn chính diện hai tay
-robot. Replay động học gán đồng thời cả hai finger joint của mỗi gripper.
+Video mặc định: `960x720`, `30 FPS`, camera `camera_ceiling`. Replay động học
+gán đồng thời cả hai finger joint của mỗi gripper.
 
 ### Bước 8: Đóng gói dataset
 

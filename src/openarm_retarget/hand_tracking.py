@@ -85,6 +85,19 @@ def _select_hands_by_side(
     return selected
 
 
+def _map_hands_to_robot_sides(
+    selected: dict[str, Any | None],
+    *,
+    swap_left_right: bool,
+) -> dict[str, Any | None]:
+    if not swap_left_right:
+        return selected
+    return {
+        "left": selected["right"],
+        "right": selected["left"],
+    }
+
+
 def _palm_scale(landmarks: Any) -> float:
     wrist = np.asarray([landmarks[0].x, landmarks[0].y], dtype=float)
     distances = [
@@ -366,6 +379,10 @@ def extract_video_bimanual_hand_pose(
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hands, labels = detect(rgb, int(round(timestamp * 1000)))
             selected = _select_hands_by_side(hands, labels)
+            selected = _map_hands_to_robot_sides(
+                selected,
+                swap_left_right=bool(config.get("swap_left_right", False)),
+            )
             timestamps.append(timestamp)
 
             for side in ("left", "right"):

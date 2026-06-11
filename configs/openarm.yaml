@@ -6,12 +6,7 @@ home_keyframe: home
 ee_site: auto
 arm_joint_names: auto
 gripper_actuator: auto
-camera:
-  mode: free
-  lookat: [0.40, 0.00, 1.05]
-  distance: 1.05
-  azimuth: 0
-  elevation: -8
+camera: camera_ceiling
 render_width: 960
 render_height: 720
 fps: 30

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -61,29 +60,6 @@ def _gripper_qpos_indices(model: Any, actuator_id: int) -> np.ndarray:
     return model.jnt_qposadr[joint_ids].astype(int)
 
 
-def _render_camera(
-    model: Any, camera: str | int | Mapping[str, Any] | None
-) -> Any:
-    if not isinstance(camera, Mapping):
-        return camera
-    if camera.get("mode", "free") != "free":
-        raise ValueError("Configured render camera mode must be 'free'")
-
-    mujoco = _mujoco()
-    render_camera = mujoco.MjvCamera()
-    mujoco.mjv_defaultFreeCamera(model, render_camera)
-    render_camera.type = mujoco.mjtCamera.mjCAMERA_FREE
-    if "lookat" in camera:
-        lookat = np.asarray(camera["lookat"], dtype=float)
-        if lookat.shape != (3,):
-            raise ValueError("Render camera lookat must contain three values")
-        render_camera.lookat[:] = lookat
-    for field in ("distance", "azimuth", "elevation"):
-        if field in camera:
-            setattr(render_camera, field, float(camera[field]))
-    return render_camera
-
-
 def replay_trajectory(
     model: Any,
     info: OpenArmModelInfo,
@@ -95,7 +71,7 @@ def replay_trajectory(
     fps: float = 30.0,
     width: int = 960,
     height: int = 720,
-    camera: str | int | Mapping[str, Any] | None = None,
+    camera: str | int | None = None,
     substeps: int = 8,
 ) -> np.ndarray:
     mujoco = _mujoco()
@@ -137,7 +113,6 @@ def replay_trajectory(
         model.vis.global_.offwidth = max(model.vis.global_.offwidth, width)
         model.vis.global_.offheight = max(model.vis.global_.offheight, height)
         renderer = mujoco.Renderer(model, height=height, width=width)
-        render_camera = _render_camera(model, camera)
         writer = cv2_module.VideoWriter(
             str(destination),
             cv2_module.VideoWriter_fourcc(*"mp4v"),
@@ -165,10 +140,10 @@ def replay_trajectory(
             achieved[frame_index] = data.qpos
 
             if renderer is not None and writer is not None:
-                if render_camera is None:
+                if camera is None:
                     renderer.update_scene(data)
                 else:
-                    renderer.update_scene(data, camera=render_camera)
+                    renderer.update_scene(data, camera=camera)
                 rgb = renderer.render()
                 writer.write(
                     cv2_module.cvtColor(rgb, cv2_module.COLOR_RGB2BGR)
@@ -193,7 +168,7 @@ def replay_bimanual_trajectory(
     fps: float = 30.0,
     width: int = 960,
     height: int = 720,
-    camera: str | int | Mapping[str, Any] | None = None,
+    camera: str | int | None = None,
     substeps: int = 8,
 ) -> np.ndarray:
     mujoco = _mujoco()
@@ -246,7 +221,6 @@ def replay_bimanual_trajectory(
         model.vis.global_.offwidth = max(model.vis.global_.offwidth, width)
         model.vis.global_.offheight = max(model.vis.global_.offheight, height)
         renderer = mujoco.Renderer(model, height=height, width=width)
-        render_camera = _render_camera(model, camera)
         writer = cv2_module.VideoWriter(
             str(destination),
             cv2_module.VideoWriter_fourcc(*"mp4v"),
@@ -282,10 +256,10 @@ def replay_bimanual_trajectory(
             achieved[frame_index] = data.qpos
 
             if renderer is not None and writer is not None:
-                if render_camera is None:
+                if camera is None:
                     renderer.update_scene(data)
                 else:
-                    renderer.update_scene(data, camera=render_camera)
+                    renderer.update_scene(data, camera=camera)
                 rgb = renderer.render()
                 writer.write(
                     cv2_module.cvtColor(rgb, cv2_module.COLOR_RGB2BGR)

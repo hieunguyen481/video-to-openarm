@@ -10,7 +10,6 @@ import mujoco
 
 from openarm_retarget.mujoco_replay import (
     _gripper_target,
-    _render_camera,
     replay_bimanual_trajectory,
     replay_trajectory,
 )
@@ -109,28 +108,3 @@ def test_gripper_target_uses_zero_as_closed_for_signed_ranges():
     assert _gripper_target(1, np.array([0.0, 0.8])) == 0
     assert _gripper_target(0, np.array([-0.8, 0.0])) == -0.8
     assert _gripper_target(1, np.array([-0.8, 0.0])) == 0
-
-
-def test_free_render_camera_uses_front_view_configuration():
-    model, _ = load_bimanual_openarm(
-        {
-            "model_asset": "cell.xml",
-            "sides": ["left", "right"],
-            "home_keyframe": "home",
-        }
-    )
-    camera = _render_camera(
-        model,
-        {
-            "mode": "free",
-            "lookat": [0.4, 0.0, 1.05],
-            "distance": 1.05,
-            "azimuth": 0,
-            "elevation": -8,
-        },
-    )
-
-    np.testing.assert_allclose(camera.lookat, [0.4, 0.0, 1.05])
-    assert camera.distance == pytest.approx(1.05)
-    assert camera.azimuth == pytest.approx(0)
-    assert camera.elevation == pytest.approx(-8)

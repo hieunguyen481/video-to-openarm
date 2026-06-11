@@ -27,13 +27,13 @@ def test_axis_mapping_scale_and_workspace_clamp():
     np.testing.assert_allclose(target[1], [0.6, 0.2, 0.1])
 
 
-def test_front_camera_mapping_uses_depth_for_robot_forward_axis():
+def test_opposing_camera_mapping_mirrors_horizontal_axis():
     wrist = np.array([[0, 0, 0], [1, 2, 3]], dtype=float)
     config = {
         "openarm_origin": [0.4, 0.1, 1.1],
         "scale": {"x": 0.1, "y": 0.2, "z": 0.05},
         "axis_mapping": {
-            "human_x": "y",
+            "human_x": "y_negative",
             "human_y": "z_negative",
             "human_z": "x_negative",
         },
@@ -41,4 +41,4 @@ def test_front_camera_mapping_uses_depth_for_robot_forward_axis():
 
     target = retarget_wrist(wrist, config)
 
-    np.testing.assert_allclose(target[1], [0.25, 0.2, 0.7])
+    np.testing.assert_allclose(target[1], [0.25, 0.0, 0.7])

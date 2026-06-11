@@ -209,14 +209,16 @@ Video thật phát hiện hai vấn đề mà synthetic không thể hiện:
    đóng, còn biên `+0.7854` bên trái và `-0.7854` bên phải là mở. Replay đã
    sửa thành `gripper_cmd = 0` mở, `gripper_cmd = 1` đóng và gán đồng thời hai
    finger joint.
-4. Camera thật đặt đối diện người. Ánh xạ retarget đã đổi sang ngang ảnh ->
-   trái/phải robot, dọc ảnh -> cao/thấp, `palm_scale` -> tiến/lùi. Camera
-   render MuJoCo cũng đổi từ góc trần sang góc nhìn chính diện.
+4. Camera thật đặt đối diện người nên trái/phải trên video ngược với giải phẫu
+   người. Pipeline giữ ảnh gốc, sau đó ánh xạ chéo tay phải thật -> robot trái,
+   tay trái thật -> robot phải và đảo dấu trục ngang. Nhờ đó phía trái/phải
+   của video khớp trực quan với `camera_ceiling` trong MuJoCo. Trục dọc điều
+   khiển cao/thấp, `palm_scale` điều khiển tiến/lùi.
 
 Kiểm tra lại với `demo_002.mp4`:
 
 ```text
-left tracking  = 99.72%
+left tracking  = 99.44%
 right tracking = 99.16%
 mean IK error  = 1.23 cm
 max IK error   = 2.00 cm

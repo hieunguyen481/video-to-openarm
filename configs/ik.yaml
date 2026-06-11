@@ -1,0 +1,8 @@
+solver: jacobian_dls
+tolerance: 0.02
+max_iterations: 100
+damping: 0.01
+step_size: 0.5
+max_delta_q: 0.05
+max_frame_delta_q: 0.10
+

@@ -1,6 +1,6 @@
 # OpenArm Wrist & Pinch Retargeting — Project Plan v2
 
-> **Phiên bản:** 2.0 | **Cập nhật:** 2025 | **Trạng thái:** Draft
+> **Phiên bản:** 2.0 | **Cập nhật triển khai:** 11/06/2026 | **Trạng thái:** MVP implemented
 
 ---
 

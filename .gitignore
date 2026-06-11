@@ -18,6 +18,7 @@ outputs/replay_videos/*
 outputs/plots/*
 !outputs/**/.gitkeep
 outputs/openarm_model_report.txt
+outputs/*_quality_report.json
 
 models/*.task
 models/*.joblib

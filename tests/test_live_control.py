@@ -8,6 +8,7 @@ from openarm_retarget.live_control import (
     LivePinchDetector,
     LiveRetargeter,
 )
+from openarm_retarget.live_teleop import LiveHandTracker
 
 
 def _sample(
@@ -114,3 +115,11 @@ def test_live_metrics_reports_latency_components_and_skips():
     assert summary["dropped_or_skipped_frames"] == 1
     assert summary["latency_ms"]["mean"] == 30
     assert summary["render_ms"]["max"] == 5
+
+
+def test_live_tracker_can_toggle_left_right_without_detector():
+    tracker = object.__new__(LiveHandTracker)
+    tracker.swap_left_right = True
+
+    assert tracker.toggle_left_right() is False
+    assert tracker.toggle_left_right() is True

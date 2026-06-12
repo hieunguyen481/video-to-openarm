@@ -72,6 +72,10 @@ MSMF latest-frame camera
 -> optional live NPZ dataset
 ```
 
+Live dùng `swap_left_right: true` giống đường xử lý video offline để bù camera
+đặt đối diện người. Có thể nhấn `S` trong lúc chạy để đổi hai bên và hệ thống
+sẽ tự hiệu chuẩn lại mốc target.
+
 Benchmark trên i7-12700H, RTX 3060 Laptop, Windows:
 
 | Chế độ | FPS xử lý | Mean latency | P95 latency |

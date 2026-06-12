@@ -86,6 +86,7 @@ def _live(args: argparse.Namespace) -> int:
         fps=args.fps,
         inference_width=args.inference_width,
         delegate=args.delegate,
+        swap_left_right=args.swap_left_right,
         duration=args.duration,
         show_viewer=not args.no_viewer,
         show_preview=not args.no_preview,
@@ -182,6 +183,12 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument(
         "--delegate",
         choices=("auto", "cpu", "gpu"),
+    )
+    live.add_argument(
+        "--swap-left-right",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Swap camera handedness to match the opposing-camera layout",
     )
     live.add_argument("--duration", type=float)
     live.add_argument("--no-viewer", action="store_true")

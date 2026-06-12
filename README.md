@@ -140,6 +140,16 @@ Một cửa sổ hiển thị đồng thời camera người và OpenArm MuJoCo.
 - `Q` hoặc `ESC`: kết thúc.
 - `R`: đặt lại mốc tay hiện tại.
 - `P`: tạm giữ robot.
+- `S`: đổi tay trái/phải và tự đặt lại mốc.
+
+Với camera đặt đối diện người, mặc định `swap_left_right: true`: tay ở phía
+trái khung camera điều khiển robot trái và tay ở phía phải khung điều khiển
+robot phải, giống pipeline video offline. Có thể ép cấu hình khi chạy:
+
+```powershell
+openarm-retarget live --swap-left-right
+openarm-retarget live --no-swap-left-right
+```
 
 Khi một tay mất tracking, robot giữ target cuối. Sau `0.5 s`, gripper bên đó
 tự mở; khi tay xuất hiện lại hệ thống đặt mốc mới để tránh nhảy pose.

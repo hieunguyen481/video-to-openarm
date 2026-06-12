@@ -142,6 +142,7 @@ class LiveHandTracker:
         *,
         inference_width: int,
         delegate: str,
+        swap_left_right: bool | None = None,
     ) -> None:
         if inference_width <= 0:
             raise ValueError("inference_width must be positive")
@@ -153,8 +154,10 @@ class LiveHandTracker:
         )
         self.inference_width = inference_width
         self.mirror_input = bool(tracker_config.get("mirror_input", False))
-        self.swap_left_right = bool(
-            tracker_config.get("swap_left_right", False)
+        self.swap_left_right = (
+            bool(tracker_config.get("swap_left_right", False))
+            if swap_left_right is None
+            else swap_left_right
         )
         self._last_timestamp_ms = -1
 
@@ -193,6 +196,10 @@ class LiveHandTracker:
 
     def close(self) -> None:
         self.detector.close()
+
+    def toggle_left_right(self) -> bool:
+        self.swap_left_right = not self.swap_left_right
+        return self.swap_left_right
 
 
 class LiveSessionRecorder:
@@ -236,6 +243,7 @@ def _draw_status(
     inference_ms: float,
     ik_ms: float,
     grippers: Mapping[str, float],
+    swap_left_right: bool,
 ) -> None:
     cv2 = _import_cv2()
     colors = {"left": (50, 205, 50), "right": (255, 150, 30)}
@@ -257,7 +265,10 @@ def _draw_status(
             f"gripper L:{'CLOSED' if grippers['left'] else 'OPEN'} "
             f"R:{'CLOSED' if grippers['right'] else 'OPEN'}"
         ),
-        "Q/ESC quit | R recalibrate | P pause",
+        (
+            f"swap L/R: {'ON' if swap_left_right else 'OFF'} | "
+            "S swap | R recalibrate | P pause | Q quit"
+        ),
     ]
     for index, text in enumerate(lines):
         cv2.putText(
@@ -351,6 +362,7 @@ def run_live_teleoperation(
     fps: float | None = None,
     inference_width: int | None = None,
     delegate: str | None = None,
+    swap_left_right: bool | None = None,
     duration: float | None = None,
     show_viewer: bool = True,
     show_preview: bool = True,
@@ -382,6 +394,11 @@ def run_live_teleoperation(
             delegate
             if delegate is not None
             else tracking_config.get("delegate", "cpu")
+        ),
+        swap_left_right=(
+            swap_left_right
+            if swap_left_right is not None
+            else bool(tracking_config.get("swap_left_right", True))
         ),
     )
     model, info = load_bimanual_openarm(configs["openarm"])
@@ -584,6 +601,7 @@ def run_live_teleoperation(
                         inference_ms=inference_ms,
                         ik_ms=ik_ms,
                         grippers=grippers,
+                        swap_left_right=tracker.swap_left_right,
                     )
                 display_frame = _compose_live_display(
                     human_frame,
@@ -623,6 +641,9 @@ def run_live_teleoperation(
                     break
                 if key in (ord("r"), ord("R")):
                     retargeter.reset_reference()
+                if key in (ord("s"), ord("S")):
+                    tracker.toggle_left_right()
+                    retargeter.reset_reference()
                 if key in (ord("p"), ord("P")):
                     paused = not paused
     finally:
@@ -657,6 +678,7 @@ def run_live_teleoperation(
                 else tracking_config.get("delegate", "cpu")
             ),
             "inference_width": tracker.inference_width,
+            "swap_left_right": tracker.swap_left_right,
         },
         "display": {
             "mujoco_enabled": show_viewer,

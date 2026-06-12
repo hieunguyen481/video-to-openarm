@@ -245,6 +245,7 @@ def _draw_status(
     grippers: Mapping[str, float],
     swap_left_right: bool,
     mirror_horizontal: bool,
+    mirror_depth: bool,
 ) -> None:
     cv2 = _import_cv2()
     colors = {"left": (50, 205, 50), "right": (255, 150, 30)}
@@ -269,7 +270,11 @@ def _draw_status(
         (
             f"swap L/R: {'ON' if swap_left_right else 'OFF'} | "
             f"mirror X: {'ON' if mirror_horizontal else 'OFF'} | "
-            "S swap | R recalibrate | H home | P pause | Q quit"
+            f"reverse depth: {'ON' if mirror_depth else 'OFF'}"
+        ),
+        (
+            "S swap | D reverse depth | R recalibrate | "
+            "H home | P pause | Q quit"
         ),
     ]
     for index, text in enumerate(lines):
@@ -366,6 +371,7 @@ def run_live_teleoperation(
     delegate: str | None = None,
     swap_left_right: bool | None = None,
     mirror_horizontal: bool | None = None,
+    mirror_depth: bool | None = None,
     duration: float | None = None,
     show_viewer: bool = True,
     show_preview: bool = True,
@@ -430,6 +436,15 @@ def run_live_teleoperation(
         depth_deadband=float(
             control_config.get("depth_deadband", 0.008)
         ),
+        depth_axis_lock=bool(
+            control_config.get("depth_axis_lock", True)
+        ),
+        depth_lock_threshold=float(
+            control_config.get("depth_lock_threshold", 0.012)
+        ),
+        depth_lock_max_xy_delta=float(
+            control_config.get("depth_lock_max_xy_delta", 0.08)
+        ),
         lost_hand_timeout_s=float(
             control_config.get("lost_hand_timeout_s", 0.5)
         ),
@@ -438,6 +453,11 @@ def run_live_teleoperation(
         mirror_horizontal
         if mirror_horizontal is not None
         else bool(tracking_config.get("mirror_horizontal", True))
+    )
+    retargeter.set_mirror_depth(
+        mirror_depth
+        if mirror_depth is not None
+        else bool(tracking_config.get("mirror_depth", False))
     )
     pinch_config = configs["pinch"]
     pinch_detectors = {
@@ -636,6 +656,7 @@ def run_live_teleoperation(
                         grippers=grippers,
                         swap_left_right=tracker.swap_left_right,
                         mirror_horizontal=retargeter.mirror_horizontal,
+                        mirror_depth=retargeter.mirror_depth,
                     )
                 display_frame = _compose_live_display(
                     human_frame,
@@ -681,6 +702,10 @@ def run_live_teleoperation(
                     tracker.toggle_left_right()
                     retargeter.toggle_horizontal_direction()
                     returning_home = False
+                if key in (ord("d"), ord("D")):
+                    retargeter.toggle_depth_direction()
+                    returning_home = False
+                    paused = False
                 if key in (ord("h"), ord("H")):
                     retargeter.start_return_home(
                         time.monotonic()
@@ -726,6 +751,7 @@ def run_live_teleoperation(
             "inference_width": tracker.inference_width,
             "swap_left_right": tracker.swap_left_right,
             "mirror_horizontal": retargeter.mirror_horizontal,
+            "mirror_depth": retargeter.mirror_depth,
         },
         "display": {
             "mujoco_enabled": show_viewer,

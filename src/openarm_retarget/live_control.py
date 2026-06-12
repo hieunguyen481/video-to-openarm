@@ -33,6 +33,9 @@ class LiveRetargeter:
         perspective_compensation: bool = True,
         image_center: tuple[float, float] | list[float] = (0.5, 0.5),
         depth_deadband: float = 0.008,
+        depth_axis_lock: bool = True,
+        depth_lock_threshold: float = 0.012,
+        depth_lock_max_xy_delta: float = 0.08,
         lost_hand_timeout_s: float = 0.5,
     ) -> None:
         if smoothing_tau_s <= 0:
@@ -53,6 +56,10 @@ class LiveRetargeter:
             raise ValueError("image_center must contain two finite values")
         if depth_deadband < 0:
             raise ValueError("depth_deadband must be non-negative")
+        if depth_lock_threshold < 0:
+            raise ValueError("depth_lock_threshold must be non-negative")
+        if depth_lock_max_xy_delta <= 0:
+            raise ValueError("depth_lock_max_xy_delta must be positive")
         if lost_hand_timeout_s <= 0:
             raise ValueError("lost_hand_timeout_s must be positive")
         self.configs = {}
@@ -70,6 +77,9 @@ class LiveRetargeter:
         self.perspective_compensation = perspective_compensation
         self.image_center = center
         self.depth_deadband = depth_deadband
+        self.depth_axis_lock = depth_axis_lock
+        self.depth_lock_threshold = depth_lock_threshold
+        self.depth_lock_max_xy_delta = depth_lock_max_xy_delta
         self.lost_hand_timeout_s = lost_hand_timeout_s
         self._homes = {
             side: np.asarray(
@@ -128,6 +138,27 @@ class LiveRetargeter:
         self.set_mirror_horizontal(enabled)
         return enabled
 
+    @property
+    def mirror_depth(self) -> bool:
+        mappings = {
+            self.configs[side]["axis_mapping"].get("human_z")
+            for side in ("left", "right")
+        }
+        if len(mappings) != 1:
+            raise ValueError("Both live arms must use the same depth mapping")
+        return mappings.pop() == "x_negative"
+
+    def set_mirror_depth(self, enabled: bool) -> None:
+        mapping = "x_negative" if enabled else "x"
+        for side in ("left", "right"):
+            self.configs[side]["axis_mapping"]["human_z"] = mapping
+        self.reset_reference()
+
+    def toggle_depth_direction(self) -> bool:
+        enabled = not self.mirror_depth
+        self.set_mirror_depth(enabled)
+        return enabled
+
     def start_return_home(self, timestamp: float) -> None:
         self.reset_reference()
         self._home_update_time = timestamp
@@ -169,6 +200,9 @@ class LiveRetargeter:
     ) -> np.ndarray:
         scale = float(sample.palm_scale)
         wrist_xy = np.asarray(sample.wrist[:2], dtype=float)
+        depth_delta = (
+            abs(scale - reference[2]) if reference is not None else 0.0
+        )
         if (
             self.perspective_compensation
             and reference is not None
@@ -178,6 +212,14 @@ class LiveRetargeter:
             wrist_xy = self.image_center + (
                 wrist_xy - self.image_center
             ) * (reference[2] / scale)
+        if (
+            self.depth_axis_lock
+            and reference is not None
+            and depth_delta >= self.depth_lock_threshold
+            and np.linalg.norm(wrist_xy - reference[:2])
+            <= self.depth_lock_max_xy_delta
+        ):
+            wrist_xy = reference[:2].copy()
         if reference is not None and abs(scale - reference[2]) < self.depth_deadband:
             scale = float(reference[2])
         return np.asarray([wrist_xy[0], wrist_xy[1], scale], dtype=float)

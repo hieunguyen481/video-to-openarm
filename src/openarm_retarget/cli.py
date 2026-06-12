@@ -88,6 +88,7 @@ def _live(args: argparse.Namespace) -> int:
         delegate=args.delegate,
         swap_left_right=args.swap_left_right,
         mirror_horizontal=args.mirror_horizontal,
+        mirror_depth=args.mirror_depth,
         duration=args.duration,
         show_viewer=not args.no_viewer,
         show_preview=not args.no_preview,
@@ -196,6 +197,12 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Mirror horizontal hand motion in the robot coordinate frame",
+    )
+    live.add_argument(
+        "--mirror-depth",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Reverse near/far motion along the robot forward axis",
     )
     live.add_argument("--duration", type=float)
     live.add_argument("--no-viewer", action="store_true")

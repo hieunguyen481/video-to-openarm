@@ -7,6 +7,7 @@ from pathlib import Path
 from .camera_recorder import record_camera
 from .comparison_video import create_comparison_video
 from .config import load_config
+from .live_teleop import run_live_teleoperation
 from .pipeline import run_bimanual_synthetic, run_bimanual_video
 from .viewer import launch_viewer
 
@@ -72,6 +73,26 @@ def _compare(args: argparse.Namespace) -> int:
         f"{result.width}x{result.height}, {result.fps:.1f} FPS\n"
         f"{result.output}"
     )
+    return 0
+
+
+def _live(args: argparse.Namespace) -> int:
+    summary = run_live_teleoperation(
+        config_dir=args.config_dir,
+        camera=args.camera,
+        backend=args.backend,
+        width=args.width,
+        height=args.height,
+        fps=args.fps,
+        inference_width=args.inference_width,
+        delegate=args.delegate,
+        duration=args.duration,
+        show_viewer=not args.no_viewer,
+        show_preview=not args.no_preview,
+        record_session=args.record_session,
+        report_path=args.report,
+    )
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -144,6 +165,30 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--panel-height", type=int, default=720)
     compare.add_argument("--overwrite", action="store_true")
     compare.set_defaults(handler=_compare)
+
+    live = subparsers.add_parser(
+        "live", help="Control both OpenArm arms live from the webcam"
+    )
+    live.add_argument("--config-dir", type=Path, default=Path("configs"))
+    live.add_argument("--camera", type=int)
+    live.add_argument(
+        "--backend",
+        choices=("auto", "any", "dshow", "msmf", "v4l2"),
+    )
+    live.add_argument("--width", type=int)
+    live.add_argument("--height", type=int)
+    live.add_argument("--fps", type=float)
+    live.add_argument("--inference-width", type=int)
+    live.add_argument(
+        "--delegate",
+        choices=("auto", "cpu", "gpu"),
+    )
+    live.add_argument("--duration", type=float)
+    live.add_argument("--no-viewer", action="store_true")
+    live.add_argument("--no-preview", action="store_true")
+    live.add_argument("--record-session", type=Path)
+    live.add_argument("--report", type=Path)
+    live.set_defaults(handler=_live)
     return parser
 
 

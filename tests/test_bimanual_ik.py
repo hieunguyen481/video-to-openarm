@@ -8,7 +8,10 @@ pytest.importorskip("openarm_mujoco")
 
 import mujoco
 
-from openarm_retarget.ik_solver import BimanualJacobianIKSolver
+from openarm_retarget.ik_solver import (
+    BimanualJacobianIKSolver,
+    StatefulBimanualJacobianIKSolver,
+)
 from openarm_retarget.openarm_model import load_bimanual_openarm, reset_home
 
 
@@ -56,3 +59,48 @@ def test_bimanual_ik_tracks_both_end_effectors():
     assert np.max(result.left_ik_error) < 0.01
     assert np.max(result.right_ik_error) < 0.01
     assert np.all(result.converged)
+
+
+def test_stateful_bimanual_ik_warm_starts_live_frames():
+    model, info = load_bimanual_openarm(
+        {
+            "model_asset": "cell.xml",
+            "sides": ["left", "right"],
+            "home_keyframe": "home",
+        }
+    )
+    data = mujoco.MjData(model)
+    reset_home(model, data, info.home_keyframe)
+    origins = {
+        side: data.site_xpos[
+            mujoco.mj_name2id(
+                model,
+                mujoco.mjtObj.mjOBJ_SITE,
+                info.sides[side].ee_site,
+            )
+        ].copy()
+        for side in ("left", "right")
+    }
+    solver = StatefulBimanualJacobianIKSolver(
+        model,
+        info,
+        {
+            "tolerance": 0.005,
+            "max_iterations": 20,
+            "damping": 0.01,
+            "step_size": 0.5,
+            "max_delta_q": 0.05,
+            "max_frame_delta_q": 0.2,
+        },
+    )
+
+    first = solver.solve_frame(origins["left"], origins["right"])
+    second = solver.solve_frame(
+        origins["left"] + [0.01, 0.01, 0.0],
+        origins["right"] + [0.01, -0.01, 0.0],
+    )
+
+    assert first.iterations == 0
+    assert second.qpos.shape == (model.nq,)
+    assert second.left_ik_error < 0.01
+    assert second.right_ik_error < 0.01

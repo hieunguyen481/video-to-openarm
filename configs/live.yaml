@@ -1,0 +1,28 @@
+camera:
+  index: 0
+  backend: msmf
+  width: 1280
+  height: 720
+  fps: 30
+  buffer_size: 1
+  pixel_format: MJPG
+
+tracking:
+  inference_width: 640
+  delegate: cpu
+
+control:
+  smoothing_tau_s: 0.08
+  max_target_speed_m_s: 0.8
+  lost_hand_timeout_s: 0.5
+  open_gripper_on_loss: true
+
+display:
+  panel_width: 480
+  panel_height: 360
+  render_every_n_frames: 2
+
+ik:
+  max_iterations: 20
+
+report_path: outputs/live/latest_live_report.json

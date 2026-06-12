@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -142,16 +143,51 @@ def _task_tracker(config: dict[str, Any]):
             f"MediaPipe task model not found: {model_path}. "
             "Download hand_landmarker.task and set model_path in the config."
         )
-    options = vision.HandLandmarkerOptions(
-        base_options=python.BaseOptions(model_asset_path=str(model_path)),
-        running_mode=vision.RunningMode.VIDEO,
-        num_hands=int(config.get("max_num_hands", 1)),
-        min_hand_detection_confidence=float(
-            config.get("min_detection_confidence", 0.5)
-        ),
-        min_tracking_confidence=float(config.get("min_tracking_confidence", 0.5)),
+    delegate_name = str(config.get("delegate", "cpu")).lower()
+    if delegate_name == "auto":
+        delegate_name = "cpu"
+    if delegate_name not in {"cpu", "gpu"}:
+        raise ValueError("MediaPipe delegate must be auto, cpu or gpu")
+    delegate = (
+        python.BaseOptions.Delegate.GPU
+        if delegate_name == "gpu"
+        else python.BaseOptions.Delegate.CPU
     )
-    detector = vision.HandLandmarker.create_from_options(options)
+    try:
+        base_options = python.BaseOptions(
+            model_asset_path=str(model_path),
+            delegate=delegate,
+        )
+        options = vision.HandLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            num_hands=int(config.get("max_num_hands", 1)),
+            min_hand_detection_confidence=float(
+                config.get("min_detection_confidence", 0.5)
+            ),
+            min_hand_presence_confidence=float(
+                config.get(
+                    "min_hand_presence_confidence",
+                    config.get("min_detection_confidence", 0.5),
+                )
+            ),
+            min_tracking_confidence=float(
+                config.get("min_tracking_confidence", 0.5)
+            ),
+        )
+        detector = vision.HandLandmarker.create_from_options(options)
+    except (RuntimeError, NotImplementedError) as exc:
+        if delegate_name == "gpu":
+            platform_note = (
+                " The official MediaPipe Python GPU delegate is not "
+                "available in the current Windows wheel."
+                if sys.platform == "win32"
+                else ""
+            )
+            raise RuntimeError(
+                f"Cannot initialize MediaPipe GPU delegate.{platform_note}"
+            ) from exc
+        raise
 
     def detect(rgb: np.ndarray, timestamp_ms: int):
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)

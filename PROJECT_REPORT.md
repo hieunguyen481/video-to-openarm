@@ -27,7 +27,7 @@ Video hai tay
 API một tay cũ vẫn được giữ để tương thích, nhưng CLI `openarm-retarget demo`
 mặc định chạy bimanual.
 
-### Tiến độ theo kế hoạch 4 tuần
+### Tiến độ theo kế hoạch
 
 | Tuần | Nội dung kế hoạch | Trạng thái |
 |---|---|---|
@@ -35,6 +35,7 @@ mặc định chạy bimanual.
 | Tuần 2 | Pinch, smoothing, retargeting | Hoàn thành cho hai tay |
 | Tuần 3 | Bimanual IK, replay, hai gripper | Hoàn thành |
 | Tuần 4 | Tối ưu, dataset, baseline, README/report, demo | Hoàn thành offline |
+| Tuần 5 | Live webcam, stateful IK, MuJoCo realtime | Hoàn thành |
 
 Ngoài kế hoạch 4 tuần đã có thêm:
 
@@ -45,9 +46,8 @@ Ngoài kế hoạch 4 tuần đã có thêm:
 
 Chưa hoàn thành:
 
-- Điều khiển webcam trực tiếp trong viewer theo thời gian thực.
-- Calibration bằng video hai tay thật.
 - Collision avoidance giữa hai cánh tay.
+- Điều khiển robot OpenArm phần cứng thật.
 
 Đã bổ sung công cụ thu video hai tay từ webcam:
 
@@ -55,8 +55,33 @@ Chưa hoàn thành:
 openarm-retarget record
 ```
 
-Đây là bước thu dữ liệu MP4 vào `data/raw_videos/`, chưa phải live
-teleoperation.
+Live teleoperation:
+
+```bash
+openarm-retarget live
+```
+
+Kiến trúc:
+
+```text
+MSMF latest-frame camera
+-> MediaPipe Tasks VIDEO / XNNPACK CPU
+-> live pinch + smoothing + tracking-loss safety
+-> warm-start bimanual Jacobian IK
+-> integrated human + MuJoCo display
+-> optional live NPZ dataset
+```
+
+Benchmark trên i7-12700H, RTX 3060 Laptop, Windows:
+
+| Chế độ | FPS xử lý | Mean latency | P95 latency |
+|---|---:|---:|---:|
+| Tracking + IK | 22.46 | 28.77 ms | 78.00 ms |
+| Camera + MuJoCo | 12.67 | 57.93 ms | 94.00 ms |
+
+GPU delegate MediaPipe đã được thử trực tiếp nhưng wheel Windows báo
+`GPU processing is disabled in build flags`. Vì vậy inference dùng XNNPACK
+CPU; RTX 3060 chưa được dùng trong phiên bản Python hiện tại.
 
 ## 2. Kết quả nghiệm thu bimanual
 

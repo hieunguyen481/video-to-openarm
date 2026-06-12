@@ -42,6 +42,17 @@ class BimanualIKResult:
     iterations: np.ndarray
 
 
+@dataclass(frozen=True)
+class BimanualIKFrame:
+    qpos: np.ndarray
+    left_ee_pos: np.ndarray
+    right_ee_pos: np.ndarray
+    left_ik_error: float
+    right_ik_error: float
+    converged: bool
+    iterations: int
+
+
 class JacobianIKSolver:
     def __init__(
         self,
@@ -362,5 +373,139 @@ class BimanualJacobianIKSolver:
             left_ik_error=errors["left"].astype(np.float32),
             right_ik_error=errors["right"].astype(np.float32),
             converged=converged,
+            iterations=iterations,
+        )
+
+
+class StatefulBimanualJacobianIKSolver(BimanualJacobianIKSolver):
+    """Warm-started bimanual IK for one target pair at a time."""
+
+    def __init__(
+        self,
+        model: Any,
+        info: BimanualOpenArmInfo,
+        config: Mapping[str, Any],
+    ) -> None:
+        super().__init__(model, info, config)
+        mujoco = _mujoco()
+        self.data = mujoco.MjData(model)
+        self._jac_pos = {
+            side: np.zeros((3, model.nv), dtype=np.float64)
+            for side in ("left", "right")
+        }
+        self.reset()
+
+    def reset(self, qpos: np.ndarray | None = None) -> None:
+        mujoco = _mujoco()
+        reset_home(self.model, self.data, self.info.home_keyframe)
+        if qpos is not None:
+            values = np.asarray(qpos, dtype=float)
+            if values.shape != (self.model.nq,):
+                raise ValueError(f"qpos must have shape {(self.model.nq,)}")
+            self.data.qpos[:] = values
+            self._clamp_joint_limits(self.data.qpos)
+            mujoco.mj_forward(self.model, self.data)
+        self._previous_arm = self.data.qpos[self.all_qpos_indices].copy()
+
+    def solve_frame(
+        self,
+        left_target_pos: np.ndarray,
+        right_target_pos: np.ndarray,
+    ) -> BimanualIKFrame:
+        mujoco = _mujoco()
+        targets = {
+            "left": np.asarray(left_target_pos, dtype=float),
+            "right": np.asarray(right_target_pos, dtype=float),
+        }
+        for side, target in targets.items():
+            if target.shape != (3,) or not np.all(np.isfinite(target)):
+                raise ValueError(
+                    f"{side}_target_pos must contain three finite values"
+                )
+
+        best_qpos = self.data.qpos.copy()
+        best_error = np.inf
+        iterations = self.max_iterations
+        for iteration in range(self.max_iterations + 1):
+            mujoco.mj_forward(self.model, self.data)
+            deltas = {
+                side: targets[side] - self.data.site_xpos[self.site_ids[side]]
+                for side in ("left", "right")
+            }
+            side_errors = {
+                side: float(np.linalg.norm(delta))
+                for side, delta in deltas.items()
+            }
+            combined_error = float(
+                np.linalg.norm(
+                    np.concatenate((deltas["left"], deltas["right"]))
+                )
+            )
+            if combined_error < best_error:
+                best_error = combined_error
+                best_qpos = self.data.qpos.copy()
+            if max(side_errors.values()) <= self.tolerance:
+                iterations = iteration
+                break
+            if iteration == self.max_iterations:
+                break
+
+            jacobian_blocks = []
+            for side in ("left", "right"):
+                self._jac_pos[side].fill(0)
+                mujoco.mj_jacSite(
+                    self.model,
+                    self.data,
+                    self._jac_pos[side],
+                    None,
+                    self.site_ids[side],
+                )
+                jacobian_blocks.append(
+                    self._jac_pos[side][:, self.all_dof_indices]
+                )
+            jacobian = np.vstack(jacobian_blocks)
+            delta = np.concatenate((deltas["left"], deltas["right"]))
+            regularized = (
+                jacobian @ jacobian.T
+                + (self.damping**2) * np.eye(6)
+            )
+            delta_q = jacobian.T @ np.linalg.solve(regularized, delta)
+            delta_q = np.clip(
+                delta_q, -self.max_delta_q, self.max_delta_q
+            )
+            self.data.qpos[self.all_qpos_indices] += (
+                self.step_size * delta_q
+            )
+            self._clamp_joint_limits(self.data.qpos)
+
+        self.data.qpos[:] = best_qpos
+        arm = self.data.qpos[self.all_qpos_indices]
+        frame_delta = np.clip(
+            arm - self._previous_arm,
+            -self.max_frame_delta_q,
+            self.max_frame_delta_q,
+        )
+        self.data.qpos[self.all_qpos_indices] = (
+            self._previous_arm + frame_delta
+        )
+        self._clamp_joint_limits(self.data.qpos)
+        mujoco.mj_forward(self.model, self.data)
+        self._previous_arm = self.data.qpos[self.all_qpos_indices].copy()
+
+        ee_pos = {
+            side: self.data.site_xpos[self.site_ids[side]].copy()
+            for side in ("left", "right")
+        }
+        errors = {
+            side: float(np.linalg.norm(targets[side] - ee_pos[side]))
+            for side in ("left", "right")
+        }
+        return BimanualIKFrame(
+            qpos=self.data.qpos.copy(),
+            left_ee_pos=ee_pos["left"],
+            right_ee_pos=ee_pos["right"],
+            left_ik_error=errors["left"],
+            right_ik_error=errors["right"],
+            converged=max(errors.values()) <= self.tolerance,
             iterations=iterations,
         )

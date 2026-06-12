@@ -1008,6 +1008,38 @@ outputs/replay_videos/final_demo.mp4
 
 ---
 
+### Tuần 5: Live webcam + Bimanual IK + MuJoCo
+
+| Ngày | Việc làm | Trạng thái |
+|---|---|---|
+| 1 | Camera thread latest-frame, MSMF/MJPG | Hoàn thành |
+| 2 | MediaPipe live tracking và ánh xạ hai tay | Hoàn thành |
+| 3 | Stateful IK, smoothing và safety khi mất tay | Hoàn thành |
+| 4 | Hiển thị camera + MuJoCo, đo latency | Hoàn thành |
+| 5 | Ghi live dataset, test, benchmark, tài liệu | Hoàn thành |
+
+**Command:**
+
+```bash
+openarm-retarget live
+```
+
+**Nghiệm thu:**
+
+```text
+tracking/IK latency p95 < 150 ms       đạt: 78 ms
+combined display latency p95 < 150 ms đạt: 94 ms
+hai tay + hai gripper                  đạt
+mất tay giữ pose, gripper mở an toàn   đạt
+ghi live session NPZ                   đạt
+```
+
+MediaPipe Python GPU delegate không khả dụng trong wheel Windows hiện tại.
+Hệ thống dùng XNNPACK CPU; GPU có thể được khai thác sau bằng MediaPipe C++
+tự build hoặc một backend inference khác.
+
+---
+
 ## 14. Checklist chạy mượt trong MuJoCo
 
 ```

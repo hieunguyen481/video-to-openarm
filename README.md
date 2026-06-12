@@ -125,8 +125,58 @@ openarm-retarget viewer --walls
 openarm-mujoco-launch --keyframe home
 ```
 
-Viewer cho phép quan sát model, camera, joint/control trong MuJoCo. Đây chưa
-phải vòng lặp webcam điều khiển robot theo thời gian thực.
+Viewer cho phép quan sát model, camera và joint/control trong MuJoCo.
+
+### Điều khiển trực tiếp từ webcam
+
+Chạy live teleoperation cho cả hai tay và hai gripper:
+
+```powershell
+openarm-retarget live
+```
+
+Một cửa sổ hiển thị đồng thời camera người và OpenArm MuJoCo. Phím điều khiển:
+
+- `Q` hoặc `ESC`: kết thúc.
+- `R`: đặt lại mốc tay hiện tại.
+- `P`: tạm giữ robot.
+
+Khi một tay mất tracking, robot giữ target cuối. Sau `0.5 s`, gripper bên đó
+tự mở; khi tay xuất hiện lại hệ thống đặt mốc mới để tránh nhảy pose.
+
+Benchmark không mở giao diện:
+
+```powershell
+openarm-retarget live --duration 10 --no-viewer --no-preview
+```
+
+Ghi phiên live thành NPZ:
+
+```powershell
+openarm-retarget live `
+  --record-session data/datasets/live_session_001.npz
+```
+
+NPZ chứa `qpos [T,19]`, target hai tay, hai gripper và latency
+tracking/IK/render. Báo cáo mặc định được lưu tại
+`outputs/live/latest_live_report.json`.
+
+Máy thử nghiệm có RTX 3060 Laptop nhưng MediaPipe Python wheel trên Windows
+không bật GPU delegate. Chế độ mặc định dùng XNNPACK CPU cùng các tối ưu:
+
+- camera MSMF/MJPG 1280x720, yêu cầu 30 FPS;
+- camera thread chỉ giữ frame mới nhất;
+- MediaPipe VIDEO tracking ở chiều rộng 640 px;
+- IK warm-start và giới hạn vận tốc target/joint;
+- render MuJoCo 480x360 mỗi hai frame.
+
+Benchmark thực tế:
+
+```text
+tracking + IK          = 22.46 FPS, p95 latency 78 ms
+camera + MuJoCo        = 12.67 FPS, p95 latency 94 ms
+mean combined latency  = 57.93 ms
+```
 
 Chạy toàn bộ pipeline bằng dữ liệu synthetic và render MP4:
 
@@ -344,6 +394,7 @@ discovery, Jacobian `6x14`, hai gripper, dataset và pipeline bimanual end-to-en
 | `configs/bimanual_retarget.yaml` | Origin/workspace riêng tay trái và phải |
 | `configs/ik.yaml` | Tolerance, damping, step và velocity limit |
 | `configs/openarm.yaml` | MJCF, hai side, EE/gripper discovery, camera, render |
+| `configs/live.yaml` | Camera, latency, safety và live display |
 
 ## Trạng thái
 
@@ -355,12 +406,12 @@ MediaPipe Tasks và model chính thức đã khởi tạo thành công. Repo kh�
 video tay thật, vì vậy tỷ lệ tracking trên camera thực cần được đo bằng video
 của người vận hành.
 
-Theo kế hoạch 4 tuần: tuần 1-3 đã hoàn thành; tuần 4 đã hoàn thành phần
-smoothing, dataset, báo cáo và demo offline. Phần chưa làm là live
-`webcam -> bimanual IK -> MuJoCo viewer` trong cùng vòng lặp thời gian thực.
+Kế hoạch tuần 1-4 offline và tuần 5 live
+`webcam -> bimanual IK -> MuJoCo` đã hoàn thành.
 
 ## Nguồn
 
 - [OpenArm MuJoCo](https://github.com/enactic/openarm_mujoco)
 - [MuJoCo Python](https://mujoco.readthedocs.io/en/stable/python.html)
-- [MediaPipe Hand Landmarker for Python](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python)
+- [MediaPipe Hand Landmarker for Python](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/python)
+- [OpenCV Video I/O](https://docs.opencv.org/4.x/d4/d15/group__videoio__flags__base.html)

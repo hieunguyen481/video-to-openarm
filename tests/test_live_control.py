@@ -77,6 +77,32 @@ def test_live_retargeter_calibrates_holds_and_reanchors_after_loss():
     np.testing.assert_allclose(reanchored, moved)
 
 
+def test_live_retargeter_rejects_jump_clamps_workspace_and_returns_home():
+    retargeter = LiveRetargeter(
+        _retarget_config(),
+        smoothing_tau_s=0.01,
+        max_target_speed_m_s=10.0,
+        return_home_speed_m_s=0.2,
+        max_home_displacement_m=0.05,
+        max_human_jump=0.3,
+    )
+    home = retargeter.update("left", _sample(), 1.0)
+    jumped = retargeter.update(
+        "left", _sample((0.9, 0.9, 0.0)), 1.1
+    )
+    np.testing.assert_allclose(jumped, home)
+
+    retargeter.update("left", _sample((0.8, 0.9, 0.0)), 1.2)
+    target = retargeter.target("left")
+    assert np.all(np.abs(target - home) <= 0.05 + 1e-6)
+
+    retargeter.start_return_home(2.0)
+    for index in range(20):
+        retargeter.step_return_home(2.1 + index * 0.1)
+    assert retargeter.at_home()
+    np.testing.assert_allclose(retargeter.target("left"), home)
+
+
 def test_live_pinch_confirms_and_opens_after_tracking_loss():
     detector = LivePinchDetector(
         close_threshold=0.04,
@@ -90,6 +116,11 @@ def test_live_pinch_confirms_and_opens_after_tracking_loss():
     assert detector.update(_sample(pinch_distance=0.02), 1.1) == 1
     assert detector.update(None, 1.2) == 1
     assert detector.update(None, 1.7) == 0
+
+    detector.update(_sample(pinch_distance=0.02), 2.0)
+    detector.update(_sample(pinch_distance=0.02), 2.1)
+    detector.open()
+    assert detector.state == 0
 
 
 def test_live_metrics_reports_latency_components_and_skips():

@@ -27,12 +27,24 @@ class LiveRetargeter:
         *,
         smoothing_tau_s: float = 0.08,
         max_target_speed_m_s: float = 0.8,
+        return_home_speed_m_s: float = 0.2,
+        max_home_displacement_m: float | list[float] = 0.18,
+        max_human_jump: float = 0.2,
         lost_hand_timeout_s: float = 0.5,
     ) -> None:
         if smoothing_tau_s <= 0:
             raise ValueError("smoothing_tau_s must be positive")
         if max_target_speed_m_s <= 0:
             raise ValueError("max_target_speed_m_s must be positive")
+        if return_home_speed_m_s <= 0:
+            raise ValueError("return_home_speed_m_s must be positive")
+        home_displacement = np.broadcast_to(
+            np.asarray(max_home_displacement_m, dtype=float), (3,)
+        ).copy()
+        if np.any(home_displacement <= 0):
+            raise ValueError("max_home_displacement_m must be positive")
+        if max_human_jump <= 0:
+            raise ValueError("max_human_jump must be positive")
         if lost_hand_timeout_s <= 0:
             raise ValueError("lost_hand_timeout_s must be positive")
         self.configs = {
@@ -40,12 +52,18 @@ class LiveRetargeter:
         }
         self.smoothing_tau_s = smoothing_tau_s
         self.max_target_speed_m_s = max_target_speed_m_s
+        self.return_home_speed_m_s = return_home_speed_m_s
+        self.max_home_displacement_m = home_displacement
+        self.max_human_jump = max_human_jump
         self.lost_hand_timeout_s = lost_hand_timeout_s
-        self._targets = {
+        self._homes = {
             side: np.asarray(
                 self.configs[side]["openarm_origin"], dtype=float
             )
             for side in ("left", "right")
+        }
+        self._targets = {
+            side: home.copy() for side, home in self._homes.items()
         }
         self._references: dict[str, np.ndarray | None] = {
             "left": None,
@@ -62,11 +80,48 @@ class LiveRetargeter:
             "left": None,
             "right": None,
         }
+        self._last_human: dict[str, np.ndarray | None] = {
+            "left": None,
+            "right": None,
+        }
+        self._home_update_time: float | None = None
 
     def reset_reference(self) -> None:
         for side in ("left", "right"):
             self._references[side] = None
             self._anchors[side] = self._targets[side].copy()
+            self._last_human[side] = None
+
+    def start_return_home(self, timestamp: float) -> None:
+        self.reset_reference()
+        self._home_update_time = timestamp
+
+    def step_return_home(self, timestamp: float) -> dict[str, np.ndarray]:
+        previous_time = self._home_update_time
+        dt = (
+            max(timestamp - previous_time, 1e-3)
+            if previous_time is not None
+            else 1.0 / 30.0
+        )
+        allowed = self.return_home_speed_m_s * dt
+        for side in ("left", "right"):
+            delta = self._homes[side] - self._targets[side]
+            distance = float(np.linalg.norm(delta))
+            if distance <= allowed:
+                self._targets[side] = self._homes[side].copy()
+            elif distance > 0:
+                self._targets[side] += delta * (allowed / distance)
+        self._home_update_time = timestamp
+        return {
+            side: self.target(side) for side in ("left", "right")
+        }
+
+    def at_home(self, tolerance: float = 1e-3) -> bool:
+        return all(
+            np.linalg.norm(self._targets[side] - self._homes[side])
+            <= tolerance
+            for side in ("left", "right")
+        )
 
     def target(self, side: str) -> np.ndarray:
         return self._targets[side].copy()
@@ -87,6 +142,7 @@ class LiveRetargeter:
             ):
                 self._references[side] = None
                 self._anchors[side] = self._targets[side].copy()
+                self._last_human[side] = None
             return self.target(side)
 
         human = np.asarray(
@@ -96,6 +152,16 @@ class LiveRetargeter:
         if not np.all(np.isfinite(human)):
             return self.update(side, None, timestamp)
         self._last_seen[side] = timestamp
+        previous_human = self._last_human[side]
+        self._last_human[side] = human
+        if (
+            previous_human is not None
+            and np.linalg.norm(human - previous_human) > self.max_human_jump
+        ):
+            self._references[side] = human
+            self._anchors[side] = self._targets[side].copy()
+            self._last_update[side] = timestamp
+            return self.target(side)
 
         reference = self._references[side]
         if reference is None:
@@ -110,6 +176,11 @@ class LiveRetargeter:
             np.stack((reference, human)),
             config,
         )[1].astype(float)
+        desired = np.clip(
+            desired,
+            self._homes[side] - self.max_home_displacement_m,
+            self._homes[side] + self.max_home_displacement_m,
+        )
         previous_time = self._last_update[side]
         dt = (
             max(timestamp - previous_time, 1e-3)
@@ -157,6 +228,11 @@ class LivePinchDetector:
         self.open_count = 0
         self.last_seen: float | None = None
 
+    def open(self) -> None:
+        self.state = 0.0
+        self.close_count = 0
+        self.open_count = 0
+
     def update(
         self,
         sample: LiveHandSample | None,
@@ -170,7 +246,7 @@ class LivePinchDetector:
                 and self.last_seen is not None
                 and timestamp - self.last_seen >= self.lost_hand_timeout_s
             ):
-                self.state = 0.0
+                self.open()
             return self.state
 
         self.last_seen = timestamp

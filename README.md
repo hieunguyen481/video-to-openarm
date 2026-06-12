@@ -141,6 +141,7 @@ Một cửa sổ hiển thị đồng thời camera người và OpenArm MuJoCo.
 - `R`: đặt lại mốc tay hiện tại.
 - `P`: tạm giữ robot.
 - `S`: đổi tay trái/phải và tự đặt lại mốc.
+- `H`: mở gripper và đưa hai tay robot từ từ về home; đến home sẽ tự pause.
 
 Với camera đặt đối diện người, mặc định `swap_left_right: true`: tay ở phía
 trái khung camera điều khiển robot trái và tay ở phía phải khung điều khiển
@@ -153,6 +154,8 @@ openarm-retarget live --no-swap-left-right
 
 Khi một tay mất tracking, robot giữ target cuối. Sau `0.5 s`, gripper bên đó
 tự mở; khi tay xuất hiện lại hệ thống đặt mốc mới để tránh nhảy pose.
+Live control còn giới hạn target trong phạm vi `18 cm` quanh home và bỏ qua
+bước nhảy landmark bất thường để tránh robot chạy lung tung.
 
 Benchmark không mở giao diện:
 

@@ -14,7 +14,10 @@ tracking:
 
 control:
   smoothing_tau_s: 0.08
-  max_target_speed_m_s: 0.8
+  max_target_speed_m_s: 0.30
+  return_home_speed_m_s: 0.20
+  max_home_displacement_m: [0.18, 0.18, 0.18]
+  max_human_jump: 0.20
   lost_hand_timeout_s: 0.5
   open_gripper_on_loss: true
 

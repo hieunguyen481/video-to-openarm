@@ -267,7 +267,7 @@ def _draw_status(
         ),
         (
             f"swap L/R: {'ON' if swap_left_right else 'OFF'} | "
-            "S swap | R recalibrate | P pause | Q quit"
+        "S swap | R recalibrate | H home | P pause | Q quit"
         ),
     ]
     for index, text in enumerate(lines):
@@ -411,6 +411,15 @@ def run_live_teleoperation(
         max_target_speed_m_s=float(
             control_config.get("max_target_speed_m_s", 0.8)
         ),
+        return_home_speed_m_s=float(
+            control_config.get("return_home_speed_m_s", 0.2)
+        ),
+        max_home_displacement_m=control_config.get(
+            "max_home_displacement_m", 0.18
+        ),
+        max_human_jump=float(
+            control_config.get("max_human_jump", 0.2)
+        ),
         lost_hand_timeout_s=float(
             control_config.get("lost_hand_timeout_s", 0.5)
         ),
@@ -510,6 +519,7 @@ def run_live_teleoperation(
     started_at = time.monotonic()
     last_sequence = 0
     paused = False
+    returning_home = False
     window_name = "OpenArm Live Teleoperation"
     camera_device.start()
     try:
@@ -536,7 +546,15 @@ def run_live_teleoperation(
                 )
                 for side in ("left", "right")
             }
-            if not paused:
+            if returning_home:
+                targets = retargeter.step_return_home(
+                    captured.captured_at
+                )
+                grippers = {"left": 0.0, "right": 0.0}
+                if retargeter.at_home():
+                    returning_home = False
+                    paused = True
+            elif not paused:
                 targets = {
                     side: retargeter.update(
                         side, samples[side], captured.captured_at
@@ -641,11 +659,23 @@ def run_live_teleoperation(
                     break
                 if key in (ord("r"), ord("R")):
                     retargeter.reset_reference()
+                    returning_home = False
+                    paused = False
                 if key in (ord("s"), ord("S")):
                     tracker.toggle_left_right()
                     retargeter.reset_reference()
+                    returning_home = False
+                if key in (ord("h"), ord("H")):
+                    retargeter.start_return_home(
+                        time.monotonic()
+                    )
+                    for detector in pinch_detectors.values():
+                        detector.open()
+                    returning_home = True
+                    paused = False
                 if key in (ord("p"), ord("P")):
                     paused = not paused
+                    returning_home = False
     finally:
         camera_device.close()
         tracker.close()

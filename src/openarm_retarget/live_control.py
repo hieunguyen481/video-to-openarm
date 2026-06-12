@@ -47,9 +47,13 @@ class LiveRetargeter:
             raise ValueError("max_human_jump must be positive")
         if lost_hand_timeout_s <= 0:
             raise ValueError("lost_hand_timeout_s must be positive")
-        self.configs = {
-            side: dict(configs[side]) for side in ("left", "right")
-        }
+        self.configs = {}
+        for side in ("left", "right"):
+            side_config = dict(configs[side])
+            side_config["axis_mapping"] = dict(
+                side_config.get("axis_mapping", {})
+            )
+            self.configs[side] = side_config
         self.smoothing_tau_s = smoothing_tau_s
         self.max_target_speed_m_s = max_target_speed_m_s
         self.return_home_speed_m_s = return_home_speed_m_s
@@ -91,6 +95,27 @@ class LiveRetargeter:
             self._references[side] = None
             self._anchors[side] = self._targets[side].copy()
             self._last_human[side] = None
+
+    @property
+    def mirror_horizontal(self) -> bool:
+        mappings = {
+            self.configs[side]["axis_mapping"].get("human_x")
+            for side in ("left", "right")
+        }
+        if len(mappings) != 1:
+            raise ValueError("Both live arms must use the same horizontal mapping")
+        return mappings.pop() == "y_negative"
+
+    def set_mirror_horizontal(self, enabled: bool) -> None:
+        mapping = "y_negative" if enabled else "y"
+        for side in ("left", "right"):
+            self.configs[side]["axis_mapping"]["human_x"] = mapping
+        self.reset_reference()
+
+    def toggle_horizontal_direction(self) -> bool:
+        enabled = not self.mirror_horizontal
+        self.set_mirror_horizontal(enabled)
+        return enabled
 
     def start_return_home(self, timestamp: float) -> None:
         self.reset_reference()

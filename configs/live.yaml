@@ -11,6 +11,7 @@ tracking:
   inference_width: 640
   delegate: cpu
   swap_left_right: true
+  mirror_horizontal: true
 
 control:
   smoothing_tau_s: 0.08

@@ -103,6 +103,28 @@ def test_live_retargeter_rejects_jump_clamps_workspace_and_returns_home():
     np.testing.assert_allclose(retargeter.target("left"), home)
 
 
+def test_live_retargeter_toggles_horizontal_motion_direction():
+    retargeter = LiveRetargeter(
+        _retarget_config(),
+        smoothing_tau_s=0.001,
+        max_target_speed_m_s=10.0,
+        max_human_jump=1.0,
+    )
+    assert retargeter.mirror_horizontal is True
+    retargeter.update("left", _sample(), 1.0)
+    mirrored = retargeter.update(
+        "left", _sample((0.5, 0.5, 0.0)), 1.1
+    )
+    assert mirrored[1] < 0.1
+
+    assert retargeter.toggle_horizontal_direction() is False
+    anchor = retargeter.update("left", _sample(), 2.0)
+    direct = retargeter.update(
+        "left", _sample((0.5, 0.5, 0.0)), 2.1
+    )
+    assert direct[1] > anchor[1]
+
+
 def test_live_pinch_confirms_and_opens_after_tracking_loss():
     detector = LivePinchDetector(
         close_threshold=0.04,

@@ -140,43 +140,24 @@ Một cửa sổ hiển thị đồng thời camera người và OpenArm MuJoCo.
 - `Q` hoặc `ESC`: kết thúc.
 - `R`: đặt lại mốc tay hiện tại.
 - `P`: tạm giữ robot.
-- `S`: đổi tay trái/phải, đồng thời đảo hướng ngang và đặt lại mốc.
-- `D`: đảo riêng hướng xa/gần và đặt lại mốc tại vị trí hiện tại.
+- `S`: đổi đồng thời tay trái/phải, hướng ngang, hướng tiến/lùi và đặt lại mốc.
 - `H`: mở gripper và đưa hai tay robot từ từ về home; đến home sẽ tự pause.
 
 Với camera đặt đối diện người, mặc định `swap_left_right: true`: tay ở phía
 trái khung camera điều khiển robot trái và tay ở phía phải khung điều khiển
-robot phải, giống pipeline video offline. Có thể ép cấu hình khi chạy:
+robot phải, giống pipeline video offline. Chế độ này đồng thời hiệu chỉnh
+hướng ngang và tiến/lùi; không cần chỉnh từng trục riêng. Có thể ép cấu hình
+khi chạy:
 
 ```powershell
 openarm-retarget live --swap-left-right
 openarm-retarget live --no-swap-left-right
 ```
 
-Nếu chỉ cần chỉnh hướng ngang bằng dòng lệnh:
-
-```powershell
-openarm-retarget live --mirror-horizontal
-openarm-retarget live --no-mirror-horizontal
-```
-
-Hướng xa/gần mặc định đã hiệu chỉnh cho camera đặt đối diện người:
-
-```powershell
-openarm-retarget live --no-mirror-depth
-```
-
-Nếu camera hoặc góc MuJoCo dùng quy ước ngược lại, nhấn `D` trong khi chạy
-hoặc khởi động bằng `openarm-retarget live --mirror-depth`.
-
 Khi một tay mất tracking, robot giữ target cuối. Sau `0.5 s`, gripper bên đó
 tự mở; khi tay xuất hiện lại hệ thống đặt mốc mới để tránh nhảy pose.
 Live control còn giới hạn target trong phạm vi `18 cm` quanh home và bỏ qua
 bước nhảy landmark bất thường để tránh robot chạy lung tung.
-Chuyển động gần/xa dùng `palm_scale` và bù phối cảnh quanh tâm ảnh. Vì vậy
-đưa tay thẳng ra xa/gần chỉ điều khiển trục tiến/lùi. Khóa trục sâu còn loại
-bỏ sai lệch ngang/dọc nhỏ còn lại, nên robot không bị kéo chéo xuống do
-`wrist.y` thay đổi theo phối cảnh. Nhiễu độ sâu nhỏ hơn deadband được bỏ qua.
 
 Benchmark không mở giao diện:
 

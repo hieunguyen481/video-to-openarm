@@ -103,127 +103,35 @@ def test_live_retargeter_rejects_jump_clamps_workspace_and_returns_home():
     np.testing.assert_allclose(retargeter.target("left"), home)
 
 
-def test_live_retargeter_toggles_horizontal_motion_direction():
+def test_live_retargeter_toggles_horizontal_and_depth_together():
     retargeter = LiveRetargeter(
         _retarget_config(),
         smoothing_tau_s=0.001,
         max_target_speed_m_s=10.0,
         max_human_jump=1.0,
     )
-    assert retargeter.mirror_horizontal is True
-    retargeter.update("left", _sample(), 1.0)
+    retargeter.set_opposing_camera(True)
+    assert retargeter.opposing_camera is True
+    retargeter.update("left", _sample(palm_scale=0.1), 1.0)
     mirrored = retargeter.update(
-        "left", _sample((0.5, 0.5, 0.0)), 1.1
-    )
-    assert mirrored[1] < 0.1
-
-    assert retargeter.toggle_horizontal_direction() is False
-    anchor = retargeter.update("left", _sample(), 2.0)
-    direct = retargeter.update(
-        "left", _sample((0.5, 0.5, 0.0)), 2.1
-    )
-    assert direct[1] > anchor[1]
-
-
-def test_depth_motion_is_decoupled_from_vertical_image_motion():
-    retargeter = LiveRetargeter(
-        _retarget_config(),
-        smoothing_tau_s=0.001,
-        max_target_speed_m_s=10.0,
-        max_human_jump=1.0,
-        perspective_compensation=True,
-        image_center=[0.5, 0.5],
-        depth_deadband=0.0,
-    )
-    retargeter.set_mirror_depth(False)
-    reference = _sample(
-        wrist=(0.4, 0.4, 0.0),
-        palm_scale=0.1,
-    )
-    retargeter.update("left", reference, 1.0)
-
-    # The hand moves farther away: both image offset and palm scale halve.
-    farther = _sample(
-        wrist=(0.45, 0.45, 0.0),
-        palm_scale=0.05,
-    )
-    target = retargeter.update("left", farther, 1.1)
-
-    assert target[0] < 0.4
-    np.testing.assert_allclose(target[1:], [0.1, 1.1], atol=1e-5)
-
-
-def test_depth_axis_lock_suppresses_small_residual_image_motion():
-    retargeter = LiveRetargeter(
-        _retarget_config(),
-        smoothing_tau_s=0.001,
-        max_target_speed_m_s=10.0,
-        max_human_jump=1.0,
-        perspective_compensation=False,
-        depth_deadband=0.0,
-        depth_axis_lock=True,
-        depth_lock_threshold=0.01,
-        depth_lock_max_xy_delta=0.08,
-    )
-    retargeter.set_mirror_depth(False)
-    home = retargeter.update(
         "left",
-        _sample(wrist=(0.4, 0.4, 0.0), palm_scale=0.1),
-        1.0,
-    )
-    target = retargeter.update(
-        "left",
-        _sample(wrist=(0.43, 0.46, 0.0), palm_scale=0.06),
+        _sample((0.5, 0.5, 0.0), palm_scale=0.05),
         1.1,
     )
+    assert mirrored[1] < 0.1
+    assert mirrored[0] < 0.4
 
-    assert target[0] < home[0]
-    np.testing.assert_allclose(target[1:], home[1:], atol=1e-5)
-
-
-def test_live_retargeter_toggles_depth_motion_direction():
-    retargeter = LiveRetargeter(
-        _retarget_config(),
-        smoothing_tau_s=0.001,
-        max_target_speed_m_s=10.0,
-        max_human_jump=1.0,
-        perspective_compensation=False,
-        depth_deadband=0.0,
-    )
-    retargeter.set_mirror_depth(False)
-    retargeter.update("left", _sample(palm_scale=0.1), 1.0)
-    direct = retargeter.update(
-        "left", _sample(palm_scale=0.05), 1.1
-    )
-    assert direct[0] < 0.4
-
-    assert retargeter.toggle_depth_direction() is True
+    assert retargeter.toggle_opposing_camera() is False
     anchor = retargeter.update(
         "left", _sample(palm_scale=0.1), 2.0
     )
-    reversed_target = retargeter.update(
-        "left", _sample(palm_scale=0.05), 2.1
+    direct = retargeter.update(
+        "left",
+        _sample((0.5, 0.5, 0.0), palm_scale=0.05),
+        2.1,
     )
-    assert reversed_target[0] > anchor[0]
-
-
-def test_depth_deadband_ignores_small_palm_scale_noise():
-    retargeter = LiveRetargeter(
-        _retarget_config(),
-        smoothing_tau_s=0.001,
-        max_target_speed_m_s=10.0,
-        max_human_jump=1.0,
-        perspective_compensation=False,
-        depth_deadband=0.01,
-    )
-    home = retargeter.update(
-        "left", _sample(palm_scale=0.1), 1.0
-    )
-    target = retargeter.update(
-        "left", _sample(palm_scale=0.105), 1.1
-    )
-
-    np.testing.assert_allclose(target, home)
+    assert direct[1] > anchor[1]
+    assert direct[0] > anchor[0]
 
 
 def test_live_pinch_confirms_and_opens_after_tracking_loss():

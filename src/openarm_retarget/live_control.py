@@ -30,12 +30,6 @@ class LiveRetargeter:
         return_home_speed_m_s: float = 0.2,
         max_home_displacement_m: float | list[float] = 0.18,
         max_human_jump: float = 0.2,
-        perspective_compensation: bool = True,
-        image_center: tuple[float, float] | list[float] = (0.5, 0.5),
-        depth_deadband: float = 0.008,
-        depth_axis_lock: bool = True,
-        depth_lock_threshold: float = 0.012,
-        depth_lock_max_xy_delta: float = 0.08,
         lost_hand_timeout_s: float = 0.5,
     ) -> None:
         if smoothing_tau_s <= 0:
@@ -51,15 +45,6 @@ class LiveRetargeter:
             raise ValueError("max_home_displacement_m must be positive")
         if max_human_jump <= 0:
             raise ValueError("max_human_jump must be positive")
-        center = np.asarray(image_center, dtype=float)
-        if center.shape != (2,) or not np.all(np.isfinite(center)):
-            raise ValueError("image_center must contain two finite values")
-        if depth_deadband < 0:
-            raise ValueError("depth_deadband must be non-negative")
-        if depth_lock_threshold < 0:
-            raise ValueError("depth_lock_threshold must be non-negative")
-        if depth_lock_max_xy_delta <= 0:
-            raise ValueError("depth_lock_max_xy_delta must be positive")
         if lost_hand_timeout_s <= 0:
             raise ValueError("lost_hand_timeout_s must be positive")
         self.configs = {}
@@ -74,12 +59,6 @@ class LiveRetargeter:
         self.return_home_speed_m_s = return_home_speed_m_s
         self.max_home_displacement_m = home_displacement
         self.max_human_jump = max_human_jump
-        self.perspective_compensation = perspective_compensation
-        self.image_center = center
-        self.depth_deadband = depth_deadband
-        self.depth_axis_lock = depth_axis_lock
-        self.depth_lock_threshold = depth_lock_threshold
-        self.depth_lock_max_xy_delta = depth_lock_max_xy_delta
         self.lost_hand_timeout_s = lost_hand_timeout_s
         self._homes = {
             side: np.asarray(
@@ -118,45 +97,40 @@ class LiveRetargeter:
             self._last_human[side] = None
 
     @property
-    def mirror_horizontal(self) -> bool:
-        mappings = {
+    def opposing_camera(self) -> bool:
+        horizontal_mappings = {
             self.configs[side]["axis_mapping"].get("human_x")
             for side in ("left", "right")
         }
-        if len(mappings) != 1:
-            raise ValueError("Both live arms must use the same horizontal mapping")
-        return mappings.pop() == "y_negative"
-
-    def set_mirror_horizontal(self, enabled: bool) -> None:
-        mapping = "y_negative" if enabled else "y"
-        for side in ("left", "right"):
-            self.configs[side]["axis_mapping"]["human_x"] = mapping
-        self.reset_reference()
-
-    def toggle_horizontal_direction(self) -> bool:
-        enabled = not self.mirror_horizontal
-        self.set_mirror_horizontal(enabled)
-        return enabled
-
-    @property
-    def mirror_depth(self) -> bool:
-        mappings = {
+        depth_mappings = {
             self.configs[side]["axis_mapping"].get("human_z")
             for side in ("left", "right")
         }
-        if len(mappings) != 1:
+        if len(horizontal_mappings) != 1:
+            raise ValueError("Both live arms must use the same horizontal mapping")
+        if len(depth_mappings) != 1:
             raise ValueError("Both live arms must use the same depth mapping")
-        return mappings.pop() == "x_negative"
+        horizontal = horizontal_mappings.pop()
+        depth = depth_mappings.pop()
+        if (horizontal, depth) not in {
+            ("y_negative", "x"),
+            ("y", "x_negative"),
+        }:
+            raise ValueError("Live horizontal and depth mappings are not synchronized")
+        return horizontal == "y_negative"
 
-    def set_mirror_depth(self, enabled: bool) -> None:
-        mapping = "x_negative" if enabled else "x"
+    def set_opposing_camera(self, enabled: bool) -> None:
+        horizontal_mapping = "y_negative" if enabled else "y"
+        depth_mapping = "x" if enabled else "x_negative"
         for side in ("left", "right"):
-            self.configs[side]["axis_mapping"]["human_z"] = mapping
+            axis_mapping = self.configs[side]["axis_mapping"]
+            axis_mapping["human_x"] = horizontal_mapping
+            axis_mapping["human_z"] = depth_mapping
         self.reset_reference()
 
-    def toggle_depth_direction(self) -> bool:
-        enabled = not self.mirror_depth
-        self.set_mirror_depth(enabled)
+    def toggle_opposing_camera(self) -> bool:
+        enabled = not self.opposing_camera
+        self.set_opposing_camera(enabled)
         return enabled
 
     def start_return_home(self, timestamp: float) -> None:
@@ -193,37 +167,6 @@ class LiveRetargeter:
     def target(self, side: str) -> np.ndarray:
         return self._targets[side].copy()
 
-    def _human_coordinates(
-        self,
-        sample: LiveHandSample,
-        reference: np.ndarray | None,
-    ) -> np.ndarray:
-        scale = float(sample.palm_scale)
-        wrist_xy = np.asarray(sample.wrist[:2], dtype=float)
-        depth_delta = (
-            abs(scale - reference[2]) if reference is not None else 0.0
-        )
-        if (
-            self.perspective_compensation
-            and reference is not None
-            and scale > 1e-6
-            and reference[2] > 1e-6
-        ):
-            wrist_xy = self.image_center + (
-                wrist_xy - self.image_center
-            ) * (reference[2] / scale)
-        if (
-            self.depth_axis_lock
-            and reference is not None
-            and depth_delta >= self.depth_lock_threshold
-            and np.linalg.norm(wrist_xy - reference[:2])
-            <= self.depth_lock_max_xy_delta
-        ):
-            wrist_xy = reference[:2].copy()
-        if reference is not None and abs(scale - reference[2]) < self.depth_deadband:
-            scale = float(reference[2])
-        return np.asarray([wrist_xy[0], wrist_xy[1], scale], dtype=float)
-
     def update(
         self,
         side: str,
@@ -243,8 +186,10 @@ class LiveRetargeter:
                 self._last_human[side] = None
             return self.target(side)
 
-        reference = self._references[side]
-        human = self._human_coordinates(sample, reference)
+        human = np.asarray(
+            [sample.wrist[0], sample.wrist[1], sample.palm_scale],
+            dtype=float,
+        )
         if not np.all(np.isfinite(human)):
             return self.update(side, None, timestamp)
         self._last_seen[side] = timestamp
@@ -259,6 +204,7 @@ class LiveRetargeter:
             self._last_update[side] = timestamp
             return self.target(side)
 
+        reference = self._references[side]
         if reference is None:
             self._references[side] = human
             self._anchors[side] = self._targets[side].copy()

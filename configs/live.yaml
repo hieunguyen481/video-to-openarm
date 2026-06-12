@@ -19,6 +19,9 @@ control:
   return_home_speed_m_s: 0.20
   max_home_displacement_m: [0.18, 0.18, 0.18]
   max_human_jump: 0.20
+  perspective_compensation: true
+  image_center: [0.5, 0.5]
+  depth_deadband: 0.008
   lost_hand_timeout_s: 0.5
   open_gripper_on_loss: true
 

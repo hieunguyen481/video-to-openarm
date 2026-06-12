@@ -125,6 +125,52 @@ def test_live_retargeter_toggles_horizontal_motion_direction():
     assert direct[1] > anchor[1]
 
 
+def test_depth_motion_is_decoupled_from_vertical_image_motion():
+    retargeter = LiveRetargeter(
+        _retarget_config(),
+        smoothing_tau_s=0.001,
+        max_target_speed_m_s=10.0,
+        max_human_jump=1.0,
+        perspective_compensation=True,
+        image_center=[0.5, 0.5],
+        depth_deadband=0.0,
+    )
+    reference = _sample(
+        wrist=(0.4, 0.4, 0.0),
+        palm_scale=0.1,
+    )
+    retargeter.update("left", reference, 1.0)
+
+    # The hand moves farther away: both image offset and palm scale halve.
+    farther = _sample(
+        wrist=(0.45, 0.45, 0.0),
+        palm_scale=0.05,
+    )
+    target = retargeter.update("left", farther, 1.1)
+
+    assert target[0] > 0.4
+    np.testing.assert_allclose(target[1:], [0.1, 1.1], atol=1e-5)
+
+
+def test_depth_deadband_ignores_small_palm_scale_noise():
+    retargeter = LiveRetargeter(
+        _retarget_config(),
+        smoothing_tau_s=0.001,
+        max_target_speed_m_s=10.0,
+        max_human_jump=1.0,
+        perspective_compensation=False,
+        depth_deadband=0.01,
+    )
+    home = retargeter.update(
+        "left", _sample(palm_scale=0.1), 1.0
+    )
+    target = retargeter.update(
+        "left", _sample(palm_scale=0.105), 1.1
+    )
+
+    np.testing.assert_allclose(target, home)
+
+
 def test_live_pinch_confirms_and_opens_after_tracking_loss():
     detector = LivePinchDetector(
         close_threshold=0.04,

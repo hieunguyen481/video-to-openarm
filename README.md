@@ -163,6 +163,10 @@ Khi một tay mất tracking, robot giữ target cuối. Sau `0.5 s`, gripper b�
 tự mở; khi tay xuất hiện lại hệ thống đặt mốc mới để tránh nhảy pose.
 Live control còn giới hạn target trong phạm vi `18 cm` quanh home và bỏ qua
 bước nhảy landmark bất thường để tránh robot chạy lung tung.
+Chuyển động gần/xa dùng `palm_scale` và bù phối cảnh quanh tâm ảnh. Vì vậy
+đưa tay thẳng ra xa/gần chỉ điều khiển trục tiến/lùi, không kéo robot chéo
+xuống do `wrist.y` thay đổi theo phối cảnh. Nhiễu độ sâu nhỏ hơn deadband được
+bỏ qua.
 
 Benchmark không mở giao diện:
 

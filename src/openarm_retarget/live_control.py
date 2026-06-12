@@ -30,6 +30,9 @@ class LiveRetargeter:
         return_home_speed_m_s: float = 0.2,
         max_home_displacement_m: float | list[float] = 0.18,
         max_human_jump: float = 0.2,
+        perspective_compensation: bool = True,
+        image_center: tuple[float, float] | list[float] = (0.5, 0.5),
+        depth_deadband: float = 0.008,
         lost_hand_timeout_s: float = 0.5,
     ) -> None:
         if smoothing_tau_s <= 0:
@@ -45,6 +48,11 @@ class LiveRetargeter:
             raise ValueError("max_home_displacement_m must be positive")
         if max_human_jump <= 0:
             raise ValueError("max_human_jump must be positive")
+        center = np.asarray(image_center, dtype=float)
+        if center.shape != (2,) or not np.all(np.isfinite(center)):
+            raise ValueError("image_center must contain two finite values")
+        if depth_deadband < 0:
+            raise ValueError("depth_deadband must be non-negative")
         if lost_hand_timeout_s <= 0:
             raise ValueError("lost_hand_timeout_s must be positive")
         self.configs = {}
@@ -59,6 +67,9 @@ class LiveRetargeter:
         self.return_home_speed_m_s = return_home_speed_m_s
         self.max_home_displacement_m = home_displacement
         self.max_human_jump = max_human_jump
+        self.perspective_compensation = perspective_compensation
+        self.image_center = center
+        self.depth_deadband = depth_deadband
         self.lost_hand_timeout_s = lost_hand_timeout_s
         self._homes = {
             side: np.asarray(
@@ -151,6 +162,26 @@ class LiveRetargeter:
     def target(self, side: str) -> np.ndarray:
         return self._targets[side].copy()
 
+    def _human_coordinates(
+        self,
+        sample: LiveHandSample,
+        reference: np.ndarray | None,
+    ) -> np.ndarray:
+        scale = float(sample.palm_scale)
+        wrist_xy = np.asarray(sample.wrist[:2], dtype=float)
+        if (
+            self.perspective_compensation
+            and reference is not None
+            and scale > 1e-6
+            and reference[2] > 1e-6
+        ):
+            wrist_xy = self.image_center + (
+                wrist_xy - self.image_center
+            ) * (reference[2] / scale)
+        if reference is not None and abs(scale - reference[2]) < self.depth_deadband:
+            scale = float(reference[2])
+        return np.asarray([wrist_xy[0], wrist_xy[1], scale], dtype=float)
+
     def update(
         self,
         side: str,
@@ -170,10 +201,8 @@ class LiveRetargeter:
                 self._last_human[side] = None
             return self.target(side)
 
-        human = np.asarray(
-            [sample.wrist[0], sample.wrist[1], sample.palm_scale],
-            dtype=float,
-        )
+        reference = self._references[side]
+        human = self._human_coordinates(sample, reference)
         if not np.all(np.isfinite(human)):
             return self.update(side, None, timestamp)
         self._last_seen[side] = timestamp
@@ -188,7 +217,6 @@ class LiveRetargeter:
             self._last_update[side] = timestamp
             return self.target(side)
 
-        reference = self._references[side]
         if reference is None:
             self._references[side] = human
             self._anchors[side] = self._targets[side].copy()

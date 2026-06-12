@@ -423,6 +423,13 @@ def run_live_teleoperation(
         max_human_jump=float(
             control_config.get("max_human_jump", 0.2)
         ),
+        perspective_compensation=bool(
+            control_config.get("perspective_compensation", True)
+        ),
+        image_center=control_config.get("image_center", [0.5, 0.5]),
+        depth_deadband=float(
+            control_config.get("depth_deadband", 0.008)
+        ),
         lost_hand_timeout_s=float(
             control_config.get("lost_hand_timeout_s", 0.5)
         ),

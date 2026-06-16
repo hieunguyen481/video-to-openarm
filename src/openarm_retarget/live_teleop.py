@@ -426,7 +426,7 @@ def run_live_teleoperation(
             control_config.get("lost_hand_timeout_s", 0.5)
         ),
     )
-    retargeter.set_opposing_camera(tracker.swap_left_right)
+    retargeter.set_opposing_camera(tracker.swap_left_right)  # ego: false
     pinch_config = configs["pinch"]
     pinch_detectors = {
         side: LivePinchDetector(

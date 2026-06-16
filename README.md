@@ -85,14 +85,13 @@ Preview được mirror để dễ thao tác, nhưng file video lưu khung hình
 Pipeline giữ nguyên ảnh gốc để MediaPipe gán đúng tay trái/phải của người khi
 camera đặt đối diện.
 
-Camera cần đặt **đối diện người**, gần ngang tầm bàn tay. Không đặt camera từ
-trên xuống. Ánh xạ mặc định hiểu:
+Camera nên được đặt ở vị trí **ego-centric (góc nhìn thứ nhất)**: ví dụ như đeo trước ngực hoặc ngang cổ, hướng camera nhìn ra phía trước về phía hai bàn tay. Ánh xạ mặc định hiểu:
 
-- phía trái khung video -> robot trái, phía phải khung video -> robot phải;
-- tay phải thật -> robot trái và tay trái thật -> robot phải do camera đối diện;
-- chuyển động ngang được đảo dấu để hai video đi cùng hướng;
-- dọc trên ảnh -> cao/thấp của robot;
-- kích thước lòng bàn tay -> tiến/lùi của robot.
+- khung video và không gian làm việc của robot chia sẻ chung góc nhìn;
+- tay ở phía trái khung video điều khiển robot trái, tay phải điều khiển robot phải;
+- chuyển động ngang, dọc và tiến lùi của tay trong không gian ảnh được ánh xạ trực tiếp sang các trục x, y, z của robot mà không bị đảo ngược.
+
+*Lưu ý:* Nếu bạn có các video cũ được quay với camera đặt đối diện (3rd person), bạn có thể bật lại ánh xạ đối diện bằng cách chạy live mode với cờ `--swap-left-right` hoặc cập nhật lại config files.
 
 Ghép tracking người và robot thành một video đồng bộ:
 
@@ -143,11 +142,9 @@ Một cửa sổ hiển thị đồng thời camera người và OpenArm MuJoCo.
 - `S`: đổi đồng thời tay trái/phải, hướng ngang, hướng tiến/lùi và đặt lại mốc.
 - `H`: mở gripper và đưa hai tay robot từ từ về home; đến home sẽ tự pause.
 
-Với camera đặt đối diện người, mặc định `swap_left_right: true`: tay ở phía
-trái khung camera điều khiển robot trái và tay ở phía phải khung điều khiển
-robot phải, giống pipeline video offline. Chế độ này đồng thời hiệu chỉnh
-hướng ngang và tiến/lùi; không cần chỉnh từng trục riêng. Có thể ép cấu hình
-khi chạy:
+Với camera đặt góc nhìn thứ nhất (ego-centric), mặc định `swap_left_right: false`: tay ở phía trái khung camera điều khiển robot trái và tay ở phía phải khung điều khiển robot phải. Ánh xạ ngang dọc và tiến/lùi tự nhiên theo góc nhìn của người điều khiển.
+
+Nếu bạn đang dùng góc nhìn đối diện (camera chĩa vào người), bạn có thể ép cấu hình swap camera trái/phải và đảo trục:
 
 ```powershell
 openarm-retarget live --swap-left-right
@@ -199,6 +196,22 @@ Chạy toàn bộ pipeline bằng dữ liệu synthetic và render MP4:
 openarm-retarget demo --name bimanual_synthetic --frames 180 --render
 ```
 
+### LeRobot EgoWorld Dataset (Mới)
+
+Thay vì tự quay video, bạn có thể chạy pipeline trực tiếp từ bộ dữ liệu **LeRobot EgoWorld** trên Hugging Face. Dataset này cung cấp dữ liệu bimanual manipulation từ góc nhìn thứ nhất với format MANO mesh.
+
+Đầu tiên, tải episode từ Hugging Face (yêu cầu cài đặt `huggingface-hub` và `pyarrow`):
+
+```bash
+python scripts/download_egoworld.py --episodes 0,1,2 --output data/egoworld/
+```
+
+Sau đó chạy pipeline với episode đó:
+
+```bash
+openarm-retarget egoworld --episodes 0 --render
+```
+
 Chạy từ video thật:
 
 ```bash
@@ -211,6 +224,7 @@ openarm-retarget demo \
 Đầu ra nằm trong:
 
 ```text
+data/egoworld/
 data/hand_pose/
 data/robot_targets/
 data/robot_traj/
@@ -318,9 +332,7 @@ python scripts/05_retarget_wrist_to_openarm.py \
   --plot outputs/plots/demo_001_target.png
 ```
 
-`configs/hand_tracking.yaml` dùng `swap_left_right: true`, còn
-`configs/bimanual_retarget.yaml` đảo dấu trục ngang. Hai cấu hình này làm cho
-bên trái/phải của video camera đối diện khớp với bên trái/phải trong MuJoCo.
+`configs/hand_tracking.yaml` hiện tại dùng `swap_left_right: false`, phản ánh góc nhìn ego-centric. Trục hình ảnh được ánh xạ thẳng sang robot: `human_x -> y`, `human_z -> x` (không cần đảo chiều tiến lùi hay trái phải vì góc nhìn camera trùng với tay robot).
 
 ![Target trajectory](docs/images/target_trajectory.png)
 

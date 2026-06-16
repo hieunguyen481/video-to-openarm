@@ -115,13 +115,15 @@ class LiveRetargeter:
         if (horizontal, depth) not in {
             ("y_negative", "x"),
             ("y", "x_negative"),
+            ("y", "x"),
+            ("y_negative", "x_negative"),
         }:
             raise ValueError("Live horizontal and depth mappings are not synchronized")
         return horizontal == "y_negative"
 
     def set_opposing_camera(self, enabled: bool) -> None:
         horizontal_mapping = "y_negative" if enabled else "y"
-        depth_mapping = "x" if enabled else "x_negative"
+        depth_mapping = "x_negative" if enabled else "x"
         for side in ("left", "right"):
             axis_mapping = self.configs[side]["axis_mapping"]
             axis_mapping["human_x"] = horizontal_mapping

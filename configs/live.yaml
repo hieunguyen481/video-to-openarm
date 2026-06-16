@@ -10,7 +10,7 @@ camera:
 tracking:
   inference_width: 640
   delegate: cpu
-  swap_left_right: true
+  swap_left_right: false
 
 control:
   smoothing_tau_s: 0.08

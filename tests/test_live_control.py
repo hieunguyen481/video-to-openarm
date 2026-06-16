@@ -40,9 +40,9 @@ def _retarget_config() -> dict[str, dict[str, object]]:
         "openarm_origin": [0.4, 0.1, 1.1],
         "scale": {"x": 0.5, "y": 0.5, "z": 0.5},
         "axis_mapping": {
-            "human_x": "y_negative",
+            "human_x": "y",
             "human_y": "z_negative",
-            "human_z": "x_negative",
+            "human_z": "x",
         },
         "workspace_limit": {
             "x": [0.1, 0.7],
@@ -66,7 +66,7 @@ def test_live_retargeter_calibrates_holds_and_reanchors_after_loss():
     )
 
     np.testing.assert_allclose(origin, [0.4, 0.1, 1.1])
-    assert moved[1] < origin[1]
+    assert moved[1] > origin[1]
     np.testing.assert_allclose(
         retargeter.update("left", None, 1.2), moved
     )
@@ -110,16 +110,22 @@ def test_live_retargeter_toggles_horizontal_and_depth_together():
         max_target_speed_m_s=10.0,
         max_human_jump=1.0,
     )
+    # Default is ego-centric (opposing_camera=False)
+    assert retargeter.opposing_camera is False
+    
+    # Toggle to opposing camera
     retargeter.set_opposing_camera(True)
     assert retargeter.opposing_camera is True
+    
     retargeter.update("left", _sample(palm_scale=0.1), 1.0)
     mirrored = retargeter.update(
         "left",
         _sample((0.5, 0.5, 0.0), palm_scale=0.05),
         1.1,
     )
+    # With opposing camera: human_x (right) -> robot_y (right/negative), human_z (forward) -> robot_x (backward/negative)
     assert mirrored[1] < 0.1
-    assert mirrored[0] < 0.4
+    assert mirrored[0] > 0.4
 
     assert retargeter.toggle_opposing_camera() is False
     anchor = retargeter.update(
@@ -130,8 +136,9 @@ def test_live_retargeter_toggles_horizontal_and_depth_together():
         _sample((0.5, 0.5, 0.0), palm_scale=0.05),
         2.1,
     )
+    # With ego camera: human_x (right) -> robot_y (left/positive), human_z (forward) -> robot_x (forward/positive)
     assert direct[1] > anchor[1]
-    assert direct[0] > anchor[0]
+    assert direct[0] < anchor[0]
 
 
 def test_live_pinch_confirms_and_opens_after_tracking_loss():

@@ -602,3 +602,45 @@ def run_bimanual_video(
         render=render,
         replay_mode=replay_mode,
     )
+
+
+def run_bimanual_egoworld(
+    episode_index: int,
+    *,
+    name: str | None = None,
+    repo_id: str = "haoyang-li/EgoWorld",
+    root: str | Path = ".",
+    config_dir: str | Path = "configs",
+    cache_dir: str | Path | None = None,
+    fps: float = 30.0,
+    render: bool = False,
+    replay_mode: str = "kinematic",
+) -> tuple[BimanualPipelineArtifacts, dict[str, Any]]:
+    """Run bimanual pipeline from an EgoWorld episode.
+
+    Downloads the episode from HuggingFace, converts world-frame hand poses
+    to the pipeline format, and runs the full bimanual pipeline.
+    """
+    from .lerobot_loader import download_and_convert_episode
+
+    if name is None:
+        name = f"egoworld_ep{episode_index:04d}"
+
+    _, pose_data = download_and_convert_episode(
+        episode_index,
+        repo_id=repo_id,
+        output_dir=Path(root).resolve() / "data" / "egoworld",
+        cache_dir=cache_dir,
+        fps=fps,
+        normalize=True,
+    )
+    return run_bimanual_from_pose(
+        pose_data,
+        name=name,
+        root=root,
+        config_dir=config_dir,
+        source=f"egoworld:{repo_id}/episode_{episode_index}",
+        render=render,
+        replay_mode=replay_mode,
+    )
+

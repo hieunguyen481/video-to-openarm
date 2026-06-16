@@ -33,17 +33,17 @@ def test_bimanual_synthetic_has_independent_hands_and_pinch():
     assert np.count_nonzero(np.diff(right_pinch["gripper_cmd"])) >= 3
 
 
-def test_opposing_camera_config_cross_maps_robot_sides():
+def test_egocentric_camera_config_cross_maps_robot_sides():
     root = Path(__file__).resolve().parents[1]
     tracking = load_config(root / "configs" / "hand_tracking.yaml")
     retarget = load_config(root / "configs" / "bimanual_retarget.yaml")
 
     assert tracking["mirror_input"] is False
-    assert tracking["swap_left_right"] is True
+    assert tracking["swap_left_right"] is False
     assert retarget["left"]["openarm_origin"][1] > 0
     assert retarget["right"]["openarm_origin"][1] < 0
-    assert retarget["left"]["axis_mapping"]["human_x"] == "y_negative"
-    assert retarget["right"]["axis_mapping"]["human_x"] == "y_negative"
+    assert retarget["left"]["axis_mapping"]["human_x"] == "y"
+    assert retarget["right"]["axis_mapping"]["human_x"] == "y"
 
 
 def test_opposing_camera_cross_maps_hands_to_robot_sides():

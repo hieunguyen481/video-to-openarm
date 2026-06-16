@@ -8,7 +8,7 @@ from .camera_recorder import record_camera
 from .comparison_video import create_comparison_video
 from .config import load_config
 from .live_teleop import run_live_teleoperation
-from .pipeline import run_bimanual_synthetic, run_bimanual_video
+from .pipeline import run_bimanual_egoworld, run_bimanual_synthetic, run_bimanual_video
 from .viewer import launch_viewer
 
 
@@ -95,6 +95,29 @@ def _live(args: argparse.Namespace) -> int:
     )
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
+
+
+def _egoworld(args: argparse.Namespace) -> int:
+    indices = [int(x.strip()) for x in args.episodes.split(",")]
+    results = []
+    for idx in indices:
+        name = args.name or f"egoworld_ep{idx:04d}"
+        _, quality = run_bimanual_egoworld(
+            idx,
+            name=name,
+            repo_id=args.repo_id,
+            root=args.root,
+            config_dir=args.config_dir,
+            cache_dir=args.cache_dir,
+            fps=args.fps,
+            render=args.render,
+            replay_mode=args.replay_mode,
+        )
+        results.append(quality)
+    for quality in results:
+        print(json.dumps(quality, indent=2, ensure_ascii=False))
+    worst_error = max(q["max_ik_error_m"] for q in results) if results else 0
+    return 0 if worst_error < 0.20 else 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -196,6 +219,37 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--record-session", type=Path)
     live.add_argument("--report", type=Path)
     live.set_defaults(handler=_live)
+
+    egoworld = subparsers.add_parser(
+        "egoworld",
+        help="Run bimanual pipeline from LeRobot EgoWorld dataset",
+    )
+    egoworld.add_argument(
+        "--episodes",
+        type=str,
+        default="0",
+        help="Comma-separated episode indices (default: 0)",
+    )
+    egoworld.add_argument("--name", default=None)
+    egoworld.add_argument(
+        "--repo-id",
+        default="haoyang-li/EgoWorld",
+        help="HuggingFace dataset repository ID",
+    )
+    egoworld.add_argument("--root", type=Path, default=Path("."))
+    egoworld.add_argument(
+        "--config-dir", type=Path, default=Path("configs")
+    )
+    egoworld.add_argument("--cache-dir", type=Path, default=None)
+    egoworld.add_argument("--fps", type=float, default=30.0)
+    egoworld.add_argument("--render", action="store_true")
+    egoworld.add_argument(
+        "--replay-mode",
+        choices=("kinematic", "actuator"),
+        default="kinematic",
+    )
+    egoworld.set_defaults(handler=_egoworld)
+
     return parser
 
 

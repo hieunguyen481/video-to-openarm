@@ -4,9 +4,9 @@ scale:
   y: 0.6
   z: 0.6
 axis_mapping:
-  human_x: x
+  human_x: y
   human_y: z_negative
-  human_z: y
+  human_z: x
 workspace_limit:
   x: [0.15, 0.70]
   y: [-0.15, 0.50]

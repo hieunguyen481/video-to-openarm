@@ -20,7 +20,7 @@ from .mujoco_replay import replay_bimanual_trajectory, replay_trajectory
 from .openarm_model import load_bimanual_openarm, load_openarm
 from .pinch import detect_pinch
 from .plots import plot_ik_error, plot_pinch, plot_target, plot_wrist
-from .retargeting import retarget_wrist
+from .retargeting import retarget_wrist, retarget_wrist_auto
 from .smoothing import smooth_wrist
 from .synthetic import generate_bimanual_hand_pose, generate_hand_pose
 
@@ -187,7 +187,7 @@ def run_from_pose(
         artifacts.smoothing_plot,
     )
 
-    target_pos = retarget_wrist(wrist_smooth, configs["retarget"])
+    target_pos = retarget_wrist_auto(wrist_smooth, configs["retarget"])
     target_data = {
         "timestamps": pose["timestamps"],
         "wrist_smooth": wrist_smooth,
@@ -397,7 +397,48 @@ def run_bimanual_from_pose(
             max_speed=2.0,
             timestamps=pose["timestamps"],
         )
-        if "palm_scale" in side_data:
+        # Use world_wrist z (real 3D depth from MediaPipe) if available,
+        # otherwise fall back to palm_scale as depth proxy.
+        # World landmarks z is in meters with small range (~0.04-0.10).
+        # We rescale z so its dynamic range matches x,y (normalized 0-1),
+        # keeping the retargeting scale factors consistent.
+        if "world_wrist" in side_data:
+            world_wrist_z = np.asarray(side_data["world_wrist"])[:, 2].copy()
+            valid_mask = side_data["valid"]
+            # Compute x,y amplitude for reference
+            wrist_xy = side_data["wrist"][:, :2]
+            finite_xy = wrist_xy[np.isfinite(wrist_xy[:, 0]) & valid_mask]
+            if len(finite_xy) > 0:
+                xy_range = float(np.mean([
+                    np.percentile(finite_xy[:, 0], 95) - np.percentile(finite_xy[:, 0], 5),
+                    np.percentile(finite_xy[:, 1], 95) - np.percentile(finite_xy[:, 1], 5),
+                ]))
+            else:
+                xy_range = 0.2
+            # Compute z amplitude
+            finite_z = world_wrist_z[np.isfinite(world_wrist_z) & valid_mask]
+            if len(finite_z) > 0:
+                z_range = np.percentile(finite_z, 95) - np.percentile(finite_z, 5)
+                z_range = max(z_range, 1e-6)
+            else:
+                z_range = 1.0
+            # Rescale z to match x,y amplitude
+            z_center = np.nanmedian(finite_z) if len(finite_z) > 0 else 0.0
+            world_wrist_z = np.where(
+                np.isfinite(world_wrist_z),
+                (world_wrist_z - z_center) * (xy_range / z_range) + 0.5,
+                np.nan,
+            )
+            depth_proxy = smooth_wrist(
+                world_wrist_z[:, None],
+                side_data["valid"],
+                window=7,
+                max_speed=2.0,
+                timestamps=pose["timestamps"],
+            )[:, 0]
+            wrist_smooth = wrist_smooth.copy()
+            wrist_smooth[:, 2] = depth_proxy
+        elif "palm_scale" in side_data:
             depth_proxy = smooth_wrist(
                 np.asarray(side_data["palm_scale"])[:, None],
                 side_data["valid"],
@@ -423,7 +464,7 @@ def run_bimanual_from_pose(
             wrist_smooth,
             getattr(artifacts, f"{side}_smoothing_plot"),
         )
-        targets[side] = retarget_wrist(
+        targets[side] = retarget_wrist_auto(
             wrist_smooth, configs["bimanual_retarget"][side]
         )
         target_data.update(

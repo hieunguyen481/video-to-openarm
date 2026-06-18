@@ -53,6 +53,85 @@ class BimanualIKFrame:
     iterations: int
 
 
+def _compute_null_space_step(
+    jacobian: np.ndarray,
+    current_q: np.ndarray,
+    preferred_q: np.ndarray,
+    damping: float,
+    null_space_weight: float,
+) -> np.ndarray:
+    """Compute a null-space step that moves joints toward a preferred posture.
+
+    For a redundant manipulator (more DOF than task DOF), the null-space
+    of the Jacobian can be used to optimize secondary objectives without
+    affecting the primary end-effector task.
+
+    Parameters
+    ----------
+    jacobian : np.ndarray
+        Task-space Jacobian, shape [m, n] where m < n.
+    current_q : np.ndarray
+        Current joint positions, shape [n].
+    preferred_q : np.ndarray
+        Preferred joint positions (e.g., mid-range), shape [n].
+    damping : float
+        Damping factor for the pseudo-inverse.
+    null_space_weight : float
+        Weight for the null-space objective (0 = disabled).
+
+    Returns
+    -------
+    np.ndarray
+        Null-space step, shape [n].
+    """
+    if null_space_weight <= 0:
+        return np.zeros_like(current_q)
+    m, n = jacobian.shape
+    if m >= n:
+        return np.zeros_like(current_q)  # No redundancy
+    # Pseudo-inverse of J
+    JJt = jacobian @ jacobian.T
+    J_pinv = jacobian.T @ np.linalg.solve(JJt + (damping**2) * np.eye(m), np.eye(m))
+    # Null-space projector: (I - J_pinv @ J)
+    null_projector = np.eye(n) - J_pinv @ jacobian
+    # Step toward preferred posture
+    delta_null = null_projector @ (preferred_q - current_q)
+    return null_space_weight * delta_null
+
+
+def _adaptive_damping(base_damping: float, jacobian: np.ndarray) -> float:
+    """Compute adaptive damping based on Jacobian condition number.
+
+    Near singularities (high condition number), increased damping prevents
+    large joint velocities. In well-conditioned regions, low damping allows
+    faster convergence.
+
+    Parameters
+    ----------
+    base_damping : float
+        Base damping factor.
+    jacobian : np.ndarray
+        Task-space Jacobian.
+
+    Returns
+    -------
+    float
+        Adapted damping value.
+    """
+    JJt = jacobian @ jacobian.T
+    try:
+        cond = np.linalg.cond(JJt)
+        if cond > 1e6:
+            return base_damping * 10.0
+        elif cond > 1e4:
+            return base_damping * 3.0
+        elif cond > 1e2:
+            return base_damping * 1.5
+    except np.linalg.LinAlgError:
+        return base_damping * 10.0
+    return base_damping
+
+
 class JacobianIKSolver:
     def __init__(
         self,
@@ -69,6 +148,10 @@ class JacobianIKSolver:
         self.step_size = float(config.get("step_size", 0.5))
         self.max_delta_q = float(config.get("max_delta_q", 0.05))
         self.max_frame_delta_q = float(config.get("max_frame_delta_q", 0.10))
+        self.null_space_weight = float(config.get("null_space_weight", 0.0))
+        self.adaptive_damping_enabled = bool(
+            config.get("adaptive_damping", False)
+        )
         if min(
             self.tolerance,
             self.max_iterations,
@@ -91,6 +174,16 @@ class JacobianIKSolver:
         )
         self.qpos_indices = model.jnt_qposadr[self.joint_ids].astype(int)
         self.dof_indices = model.jnt_dofadr[self.joint_ids].astype(int)
+
+        # Compute preferred (mid-range) joint positions for null-space
+        self._preferred_q = np.zeros(len(self.joint_ids), dtype=np.float64)
+        for i, (joint_id, qpos_index) in enumerate(
+            zip(self.joint_ids, self.qpos_indices, strict=True)
+        ):
+            if model.jnt_limited[joint_id]:
+                self._preferred_q[i] = np.mean(model.jnt_range[joint_id])
+            else:
+                self._preferred_q[i] = 0.0
 
     def _clamp_joint_limits(self, qpos: np.ndarray) -> None:
         for joint_id, qpos_index in zip(
@@ -139,11 +232,27 @@ class JacobianIKSolver:
                     self.model, data, jac_pos, None, self.site_id
                 )
                 jacobian = jac_pos[:, self.dof_indices]
+                current_damping = (
+                    _adaptive_damping(self.damping, jacobian)
+                    if self.adaptive_damping_enabled
+                    else self.damping
+                )
                 regularized = (
                     jacobian @ jacobian.T
-                    + (self.damping**2) * np.eye(3)
+                    + (current_damping**2) * np.eye(3)
                 )
                 delta_q = jacobian.T @ np.linalg.solve(regularized, delta)
+                # Add null-space step toward preferred posture
+                if self.null_space_weight > 0:
+                    current_arm_q = data.qpos[self.qpos_indices].copy()
+                    null_step = _compute_null_space_step(
+                        jacobian,
+                        current_arm_q,
+                        self._preferred_q,
+                        current_damping,
+                        self.null_space_weight,
+                    )
+                    delta_q += null_step
                 delta_q = np.clip(
                     delta_q, -self.max_delta_q, self.max_delta_q
                 )
@@ -197,6 +306,10 @@ class BimanualJacobianIKSolver:
         self.step_size = float(config.get("step_size", 0.5))
         self.max_delta_q = float(config.get("max_delta_q", 0.05))
         self.max_frame_delta_q = float(config.get("max_frame_delta_q", 0.10))
+        self.null_space_weight = float(config.get("null_space_weight", 0.0))
+        self.adaptive_damping_enabled = bool(
+            config.get("adaptive_damping", False)
+        )
         if min(
             self.tolerance,
             self.max_iterations,
@@ -237,6 +350,18 @@ class BimanualJacobianIKSolver:
         self.all_dof_indices = np.concatenate(
             (self.dof_indices["left"], self.dof_indices["right"])
         )
+
+        # Compute preferred (mid-range) joint positions for null-space
+        self._preferred_q = np.zeros(
+            len(self.all_joint_ids), dtype=np.float64
+        )
+        for i, (joint_id, qpos_index) in enumerate(
+            zip(self.all_joint_ids, self.all_qpos_indices, strict=True)
+        ):
+            if model.jnt_limited[joint_id]:
+                self._preferred_q[i] = np.mean(model.jnt_range[joint_id])
+            else:
+                self._preferred_q[i] = 0.0
 
     def _clamp_joint_limits(self, qpos: np.ndarray) -> None:
         for joint_id, qpos_index in zip(
@@ -328,11 +453,27 @@ class BimanualJacobianIKSolver:
                     )
                 jacobian = np.vstack(jacobian_blocks)
                 delta = np.concatenate((deltas["left"], deltas["right"]))
+                current_damping = (
+                    _adaptive_damping(self.damping, jacobian)
+                    if self.adaptive_damping_enabled
+                    else self.damping
+                )
                 regularized = (
                     jacobian @ jacobian.T
-                    + (self.damping**2) * np.eye(6)
+                    + (current_damping**2) * np.eye(6)
                 )
                 delta_q = jacobian.T @ np.linalg.solve(regularized, delta)
+                # Add null-space step toward preferred posture
+                if self.null_space_weight > 0:
+                    current_arm_q = data.qpos[self.all_qpos_indices].copy()
+                    null_step = _compute_null_space_step(
+                        jacobian,
+                        current_arm_q,
+                        self._preferred_q,
+                        current_damping,
+                        self.null_space_weight,
+                    )
+                    delta_q += null_step
                 delta_q = np.clip(
                     delta_q, -self.max_delta_q, self.max_delta_q
                 )

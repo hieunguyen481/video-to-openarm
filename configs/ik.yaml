@@ -5,4 +5,6 @@ damping: 0.01
 step_size: 0.5
 max_delta_q: 0.05
 max_frame_delta_q: 0.10
+null_space_weight: 0.1
+adaptive_damping: true
 

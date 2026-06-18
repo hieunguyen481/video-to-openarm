@@ -13,6 +13,15 @@ LANDMARK_KEYS = (
     "pinky_tip",
 )
 
+WORLD_LANDMARK_KEYS = (
+    "world_wrist",
+    "world_thumb_tip",
+    "world_index_tip",
+    "world_middle_tip",
+    "world_ring_tip",
+    "world_pinky_tip",
+)
+
 
 def side_pose(data: Mapping[str, Any], side: str) -> dict[str, np.ndarray]:
     if side not in {"left", "right"}:
@@ -29,6 +38,11 @@ def side_pose(data: Mapping[str, Any], side: str) -> dict[str, np.ndarray]:
     palm_key = f"{side}_palm_scale"
     if palm_key in data:
         result["palm_scale"] = np.asarray(data[palm_key])
+    # Include world landmarks (3D coordinates from MediaPipe) if available
+    for world_key in WORLD_LANDMARK_KEYS:
+        data_key = f"{side}_{world_key}"
+        if data_key in data:
+            result[world_key] = np.asarray(data[data_key])
     return result
 
 

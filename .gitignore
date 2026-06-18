@@ -16,6 +16,10 @@ data/datasets/*
 outputs/debug_videos/*
 outputs/replay_videos/*
 outputs/plots/*
+outputs/final_videos/*
+outputs/comparison/*
+outputs/diagnostic/*
+outputs/live/*
 !outputs/**/.gitkeep
 outputs/openarm_model_report.txt
 outputs/*_quality_report.json

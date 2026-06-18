@@ -3,6 +3,59 @@ from __future__ import annotations
 import numpy as np
 
 
+def reject_outliers(
+    values: np.ndarray,
+    valid: np.ndarray,
+    *,
+    max_jump: float = 0.15,
+) -> np.ndarray:
+    """Mark frames with sudden landmark jumps as invalid.
+
+    Compares consecutive valid frames and marks the later frame as invalid
+    if the displacement exceeds ``max_jump``. This prevents tracking glitches
+    from propagating through smoothing.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Landmark positions, shape [T, D].
+    valid : np.ndarray
+        Boolean validity mask, shape [T].
+    max_jump : float
+        Maximum allowed displacement between consecutive valid frames
+        in normalized image coordinates. Default 0.15.
+
+    Returns
+    -------
+    np.ndarray
+        Updated validity mask with outlier frames set to False.
+    """
+    points = np.asarray(values, dtype=float)
+    mask = np.asarray(valid, dtype=bool).copy()
+    if points.ndim != 2:
+        raise ValueError(f"values must be [T, D], got {points.shape}")
+    if mask.shape != (len(points),):
+        raise ValueError(f"valid must have shape {(len(points),)}, got {mask.shape}")
+    if max_jump <= 0:
+        raise ValueError("max_jump must be positive")
+
+    last_valid_idx = None
+    for i in range(len(points)):
+        if not mask[i]:
+            continue
+        if not np.all(np.isfinite(points[i])):
+            mask[i] = False
+            continue
+        if last_valid_idx is not None:
+            delta = np.linalg.norm(points[i] - points[last_valid_idx])
+            if delta > max_jump:
+                mask[i] = False
+                continue
+        last_valid_idx = i
+
+    return mask
+
+
 def interpolate_missing(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
     points = np.asarray(values, dtype=float)
     mask = np.asarray(valid, dtype=bool)
@@ -71,8 +124,10 @@ def smooth_wrist(
     window: int = 7,
     max_speed: float = 2.0,
     timestamps: np.ndarray | None = None,
+    max_jump: float = 0.15,
 ) -> np.ndarray:
-    interpolated = interpolate_missing(wrist, valid)
+    cleaned_valid = reject_outliers(wrist, valid, max_jump=max_jump)
+    interpolated = interpolate_missing(wrist, cleaned_valid)
     averaged = moving_average(interpolated, window)
     return clamp_velocity(averaged, max_speed, timestamps).astype(np.float32)
 

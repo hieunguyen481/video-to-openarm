@@ -4,11 +4,6 @@ left:
     x: 0.35
     y: 0.50
     z: 0.25
-  auto_scale: false
-  auto_origin: false
-  workspace_utilization: 0.85
-  max_scale: 1.0
-  min_scale: 0.05
   axis_mapping:
     human_x: y
     human_y: z_negative
@@ -23,11 +18,6 @@ right:
     x: 0.35
     y: 0.50
     z: 0.25
-  auto_scale: false
-  auto_origin: false
-  workspace_utilization: 0.85
-  max_scale: 1.0
-  min_scale: 0.05
   axis_mapping:
     human_x: y
     human_y: z_negative

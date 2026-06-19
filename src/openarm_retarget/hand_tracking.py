@@ -196,7 +196,7 @@ def _task_tracker(config: dict[str, Any]):
             categories[0].category_name if categories else ""
             for categories in result.handedness
         ]
-        return result.hand_landmarks, labels, result.hand_world_landmarks
+        return result.hand_landmarks, labels
 
     return detector, detect
 
@@ -228,9 +228,7 @@ def _legacy_tracker(config: dict[str, Any]):
             item.classification[0].label
             for item in (result.multi_handedness or [])
         ]
-        # Legacy API does not provide world landmarks
-        world_hands: list[Any] = []
-        return hands, labels, world_hands
+        return hands, labels
 
     return detector, detect
 
@@ -306,7 +304,7 @@ def extract_video_hand_pose(
                 frame = cv2.flip(frame, 1)
             timestamp = frame_index / fps
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            hands, labels, _world_hands = detect(rgb, int(round(timestamp * 1000)))
+            hands, labels = detect(rgb, int(round(timestamp * 1000)))
             hand, label = _select_hand(hands, labels, preferred)
 
             timestamps.append(timestamp)
@@ -400,10 +398,6 @@ def extract_video_bimanual_hand_pose(
         side: {name: [] for name in LANDMARK_INDICES}
         for side in ("left", "right")
     }
-    world_values = {
-        side: {name: [] for name in LANDMARK_INDICES}
-        for side in ("left", "right")
-    }
     palm_scale = {"left": [], "right": []}
     valid = {"left": [], "right": []}
     timestamps: list[float] = []
@@ -419,44 +413,26 @@ def extract_video_bimanual_hand_pose(
                 frame = cv2.flip(frame, 1)
             timestamp = frame_index / fps
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            hands, labels, world_hands = detect(rgb, int(round(timestamp * 1000)))
+            hands, labels = detect(rgb, int(round(timestamp * 1000)))
             selected = _select_hands_by_side(hands, labels)
             selected = _map_hands_to_robot_sides(
                 selected,
-                swap_left_right=bool(config.get("swap_left_right", False)),
-            )
-            # Match world landmarks to the same hands by index
-            world_selected = _select_hands_by_side(world_hands, labels)
-            world_selected = _map_hands_to_robot_sides(
-                world_selected,
                 swap_left_right=bool(config.get("swap_left_right", False)),
             )
             timestamps.append(timestamp)
 
             for side in ("left", "right"):
                 hand = selected[side]
-                world_hand = world_selected[side]
                 valid[side].append(hand is not None)
                 if hand is None:
                     palm_scale[side].append(np.nan)
                     for name in LANDMARK_INDICES:
                         values[side][name].append([np.nan, np.nan, np.nan])
-                        world_values[side][name].append([np.nan, np.nan, np.nan])
                 else:
                     palm_scale[side].append(_palm_scale(hand))
                     for name, index in LANDMARK_INDICES.items():
                         item = hand[index]
                         values[side][name].append([item.x, item.y, item.z])
-                    # Extract world landmarks (3D coordinates in cm)
-                    if world_hand is not None:
-                        for name, index in LANDMARK_INDICES.items():
-                            w_item = world_hand[index]
-                            world_values[side][name].append(
-                                [w_item.x, w_item.y, w_item.z]
-                            )
-                    else:
-                        for name in LANDMARK_INDICES:
-                            world_values[side][name].append([np.nan, np.nan, np.nan])
                     if writer is not None:
                         _draw_landmarks(frame, hand, color=colors[side])
 
@@ -495,7 +471,4 @@ def extract_video_bimanual_hand_pose(
         )
         for name, points in values[side].items():
             data[f"{side}_{name}"] = np.asarray(points, dtype=np.float32)
-        # Include world landmarks (3D coordinates from MediaPipe)
-        for name, points in world_values[side].items():
-            data[f"{side}_world_{name}"] = np.asarray(points, dtype=np.float32)
     return TrackingResult(data=data, fps=fps, frame_size=(width, height))

@@ -1,9 +1,4 @@
 openarm_origin: [0.401, 0.1535, 1.12]
-auto_scale: false
-auto_origin: false
-workspace_utilization: 0.85
-max_scale: 1.0
-min_scale: 0.05
 scale:
   x: 0.35
   y: 0.50

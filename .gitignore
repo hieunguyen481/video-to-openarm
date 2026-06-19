@@ -1,4 +1,5 @@
-.venv/
+﻿.venv/
+.venv310/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -29,3 +30,23 @@ outputs/*_quality_report.json
 
 models/*.task
 models/*.joblib
+
+# Yolo/EgoForce (inferior method, not maintained)
+.cache/
+Ultralytics/
+egoforce_repo/
+outputs/egoforce_*/
+outputs/egoforce_comparison/
+install_pytorch3d.bat
+scripts/adapt_egoforce_yolo_to_pipeline.py
+scripts/check_pytorch3d_cpu.py
+scripts/compare_v2.py
+scripts/compose_method_comparison_video.py
+scripts/diagnose_right_arm.py
+scripts/extract_egoforce_yolo_keypoints.py
+scripts/install_egoforce_windows.bat
+scripts/run_v1_restored.py
+scripts/test_phase7a.py
+
+# Local reports
+BÁO_CÁO_*.md

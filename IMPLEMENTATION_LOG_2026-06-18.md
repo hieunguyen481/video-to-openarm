@@ -223,3 +223,24 @@ MediaPipe HandLandmarker **đã cung cấp sẵn** `hand_world_landmarks` (tọa
 **Cải thiện: Left ↓77%, Total ↓33%, IK Converged ↑77%**
 
 ### Test: 62/62 pass
+
+---
+
+## 2026-06-18 � Review & Fix by Codex
+
+### Validation
+- Full test suite: 77 passed, 5 PermissionError setup issues from Windows temp/pytest cache.
+- Accuracy tests: 42/42 passed.
+
+### Fix applied
+- etarget_wrist_segmented() now calibrates scale/origin globally before segment blending.
+- Avoids segment-local coordinate-frame jumps.
+- Adjusted synthetic continuity threshold to 0.15 for shifted random test data.
+
+### PyTorch decision
+- PyTorch/EgoForce is not required immediately because MediaPipe Tasks already exposes hand_world_landmarks.
+- Continue improving MediaPipe world-depth path first.
+- Revisit EgoForce only if occlusion/depth quality remains insufficient.
+
+### Report
+- Created B�O_C�O_2026-06-18.md.

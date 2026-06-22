@@ -1,444 +1,121 @@
 # Video to OpenArm
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![MuJoCo](https://img.shields.io/badge/MuJoCo-3.x-orange)](https://mujoco.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+Pipeline bimanual chuyen video/webcam hai tay nguoi thanh chuyen dong OpenArm
+trong MuJoCo: 14 joint tay, hai end-effector va hai gripper.
 
-Pipeline bimanual chuyển quỹ đạo và động tác pinch của **cả hai tay người**
-thành chuyển động 14 joint, hai end-effector và hai gripper của OpenArm.
+Trang thai hien tai: giu pipeline on dinh dung MediaPipe hand landmarks,
+pinch hysteresis, palm-scale depth proxy, retarget per-axis va bimanual
+Jacobian DLS IK. Cac nhanh thu nghiem sau do nhu Yolo/EgoForce, world3d depth
+va smoothing nang cao da bi loai khoi code chinh vi khong cho ket qua tot hon
+tren factory002_middle.
 
-**Kết quả synthetic bimanual:** IK trung bình **1.22 cm**, lớn nhất
-**2.00 cm**, hội tụ đồng thời **100%** trên 180 frame.
+## Ket qua chinh
 
-[Xem video replay MuJoCo hai tay](docs/demo/bimanual_openarm_replay.mp4)
+Synthetic bimanual:
 
-![OpenArm bimanual replay](docs/images/bimanual_replay_frame.png)
-
-## Kiến trúc
-
-```mermaid
-flowchart LR
-    A[Video / Webcam] --> B[MediaPipe<br/>Left + Right hands]
-    B --> C[2 x Pinch<br/>hysteresis]
-    B --> D[2 x Interpolate + smooth]
-    C --> E[left/right gripper_cmd]
-    D --> F[2 x Retarget + workspace clamp]
-    F --> G[Bimanual Jacobian DLS<br/>6D error / 14 joints]
-    G --> H[OpenArm bimanual replay]
-    E --> H
-    H --> I[NPZ dataset]
-    I --> J[Baseline MLP]
+```text
+frames          = 180
+mean IK error   = 1.22 cm
+max IK error    = 2.00 cm
+IK converged    = 100%
+tracking L/R    = 97.22% / 97.22%
 ```
 
-## Cài đặt
+Factory002 selected run:
 
-Python 3.10 trở lên:
+```text
+selected video  = outputs/final_videos/factory002_middle_phaseB/human_vs_robot_comparison.mp4
+method          = PhaseB per-axis retarget scale
+scale           = x=0.35, y=0.50, z=0.25
+status          = selected as the best current factory002_middle result
+```
 
-```bash
+## Pipeline
+
+```text
+Video / Webcam
+-> MediaPipe left/right hand landmarks
+-> independent pinch detection
+-> interpolate + moving-average wrist smoothing
+-> per-side wrist retarget + workspace clamp
+-> bimanual Jacobian DLS IK
+-> MuJoCo replay / live teleoperation
+-> optional NPZ dataset
+```
+
+## Setup
+
+```powershell
 python -m venv .venv
-# Windows
 .venv\Scripts\activate
-
 python -m pip install --upgrade pip
 python -m pip install -e ".[all,dev]"
 python scripts/download_hand_model.py
 python scripts/00_check_install.py
 ```
 
-Model HandLandmarker không commit vào Git. Script tải model `Latest` từ
-[nguồn chính thức của Google](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task).
+The MediaPipe model is not committed. It is downloaded to
+`models/hand_landmarker.task`.
 
-## Chạy nhanh
+## Common Commands
 
-Quay video hai tay bằng camera máy tính:
+Record a two-hand video:
 
-```bash
+```powershell
 openarm-retarget record
 ```
 
-Trong cửa sổ camera:
+Run the full offline pipeline on synthetic data:
 
-- `SPACE`: bắt đầu hoặc tạm dừng quay.
-- `Q` hoặc `ESC`: kết thúc và lưu.
-
-File mặc định: `data/raw_videos/demo_001.mp4`.
-
-Quay tự động 20 giây:
-
-```bash
-openarm-retarget record --auto-start --duration 20
+```powershell
+openarm-retarget demo --name bimanual_synthetic --frames 180 --render
 ```
 
-Nếu máy có nhiều camera:
+Run the pipeline on a real video:
 
-```bash
-openarm-retarget record --camera 1
+```powershell
+openarm-retarget demo --video data/raw_videos/demo_001.mp4 --name demo_001 --render
 ```
 
-Ghi đè một video đã tồn tại:
+Open the MuJoCo viewer:
 
-```bash
-openarm-retarget record --output data/raw_videos/demo_001.mp4 --overwrite
-```
-
-Preview được mirror để dễ thao tác, nhưng file video lưu khung hình gốc.
-Pipeline giữ nguyên ảnh gốc để MediaPipe gán đúng tay trái/phải của người khi
-camera đặt đối diện.
-
-Camera nên được đặt ở vị trí **ego-centric (góc nhìn thứ nhất)**: ví dụ như đeo trước ngực hoặc ngang cổ, hướng camera nhìn ra phía trước về phía hai bàn tay. Ánh xạ mặc định hiểu:
-
-- khung video và không gian làm việc của robot chia sẻ chung góc nhìn;
-- tay ở phía trái khung video điều khiển robot trái, tay phải điều khiển robot phải;
-- chuyển động ngang, dọc và tiến lùi của tay trong không gian ảnh được ánh xạ trực tiếp sang các trục x, y, z của robot mà không bị đảo ngược.
-
-*Lưu ý:* Nếu bạn có các video cũ được quay với camera đặt đối diện (3rd person), bạn có thể bật lại ánh xạ đối diện bằng cách chạy live mode với cờ `--swap-left-right` hoặc cập nhật lại config files.
-
-Ghép tracking người và robot thành một video đồng bộ:
-
-```bash
-openarm-retarget compare \
-  --human outputs/debug_videos/demo_001_real_bimanual_hand_debug.mp4 \
-  --robot outputs/replay_videos/demo_001_real_bimanual_openarm.mp4 \
-  --output outputs/comparison/demo_001_human_vs_robot.mp4
-```
-
-Kết quả hiển thị tay người bên trái và OpenArm bên phải trong cùng một frame,
-chung timeline nên không bị cửa sổ sau che cửa sổ trước.
-
-Mở môi trường MuJoCo tương tác:
-
-```bash
+```powershell
 openarm-retarget viewer
 ```
 
-Các biến thể:
-
-```bash
-# Giữ pose home, không chạy physics
-openarm-retarget viewer --static
-
-# Bật collision walls
-openarm-retarget viewer --walls
-
-# Lệnh gốc của package OpenArm cũng dùng được
-openarm-mujoco-launch --keyframe home
-```
-
-Viewer cho phép quan sát model, camera và joint/control trong MuJoCo.
-
-### Điều khiển trực tiếp từ webcam
-
-Chạy live teleoperation cho cả hai tay và hai gripper:
+Run live webcam teleoperation:
 
 ```powershell
 openarm-retarget live
 ```
 
-Một cửa sổ hiển thị đồng thời camera người và OpenArm MuJoCo. Phím điều khiển:
-
-- `Q` hoặc `ESC`: kết thúc.
-- `R`: đặt lại mốc tay hiện tại.
-- `P`: tạm giữ robot.
-- `S`: đổi đồng thời tay trái/phải, hướng ngang, hướng tiến/lùi và đặt lại mốc.
-- `H`: mở gripper và đưa hai tay robot từ từ về home; đến home sẽ tự pause.
-
-Với camera đặt góc nhìn thứ nhất (ego-centric), mặc định `swap_left_right: false`: tay ở phía trái khung camera điều khiển robot trái và tay ở phía phải khung điều khiển robot phải. Ánh xạ ngang dọc và tiến/lùi tự nhiên theo góc nhìn của người điều khiển.
-
-Nếu bạn đang dùng góc nhìn đối diện (camera chĩa vào người), bạn có thể ép cấu hình swap camera trái/phải và đảo trục:
+Compose human/robot comparison video:
 
 ```powershell
-openarm-retarget live --swap-left-right
-openarm-retarget live --no-swap-left-right
+openarm-retarget compare `
+  --human outputs/debug_videos/demo_001_bimanual_hand_debug.mp4 `
+  --robot outputs/replay_videos/demo_001_bimanual_openarm.mp4 `
+  --output outputs/comparison/demo_001_human_vs_robot.mp4
 ```
 
-Khi một tay mất tracking, robot giữ target cuối. Sau `0.5 s`, gripper bên đó
-tự mở; khi tay xuất hiện lại hệ thống đặt mốc mới để tránh nhảy pose.
-Live control còn giới hạn target trong phạm vi `18 cm` quanh home và bỏ qua
-bước nhảy landmark bất thường để tránh robot chạy lung tung.
+## Maintained Scripts
 
-Benchmark không mở giao diện:
+The maintained step scripts are `scripts/00_check_install.py` through
+`scripts/12_create_comparison_video.py`, plus `download_hand_model.py`,
+`download_egoworld.py`, `generate_synthetic_hand_pose.py`, and `read_quality.py`.
+
+Experimental Yolo/EgoForce/world3d helper scripts were removed from the tracked
+repo because they are not part of the selected PhaseB pipeline.
+
+## Reports
+
+- `PROJECT_REPORT.md`: compact current status and accepted result.
+- `PROJECT_PLAN.md`: original project plan and architecture.
+- `ACCURACY_IMPROVEMENT_PLAN_2026-06-18.md`: short archive of the accuracy
+  experiments and the decision to keep PhaseB.
+
+## Tests
 
 ```powershell
-openarm-retarget live --duration 10 --no-viewer --no-preview
-```
-
-Ghi phiên live thành NPZ:
-
-```powershell
-openarm-retarget live `
-  --record-session data/datasets/live_session_001.npz
-```
-
-NPZ chứa `qpos [T,19]`, target hai tay, hai gripper và latency
-tracking/IK/render. Báo cáo mặc định được lưu tại
-`outputs/live/latest_live_report.json`.
-
-Máy thử nghiệm có RTX 3060 Laptop nhưng MediaPipe Python wheel trên Windows
-không bật GPU delegate. Chế độ mặc định dùng XNNPACK CPU cùng các tối ưu:
-
-- camera MSMF/MJPG 1280x720, yêu cầu 30 FPS;
-- camera thread chỉ giữ frame mới nhất;
-- MediaPipe VIDEO tracking ở chiều rộng 640 px;
-- IK warm-start và giới hạn vận tốc target/joint;
-- render MuJoCo 480x360 mỗi hai frame.
-
-Benchmark thực tế:
-
-```text
-tracking + IK          = 22.46 FPS, p95 latency 78 ms
-camera + MuJoCo        = 12.67 FPS, p95 latency 94 ms
-mean combined latency  = 57.93 ms
-```
-
-Chạy toàn bộ pipeline bằng dữ liệu synthetic và render MP4:
-
-```bash
-openarm-retarget demo --name bimanual_synthetic --frames 180 --render
-```
-
-### LeRobot EgoWorld Dataset (Mới)
-
-Thay vì tự quay video, bạn có thể chạy pipeline trực tiếp từ bộ dữ liệu **LeRobot EgoWorld** trên Hugging Face. Dataset này cung cấp dữ liệu bimanual manipulation từ góc nhìn thứ nhất với format MANO mesh.
-
-Đầu tiên, tải episode từ Hugging Face (yêu cầu cài đặt `huggingface-hub` và `pyarrow`):
-
-```bash
-python scripts/download_egoworld.py --episodes 0,1,2 --output data/egoworld/
-```
-
-Sau đó chạy pipeline với episode đó:
-
-```bash
-openarm-retarget egoworld --episodes 0 --render
-```
-
-Chạy từ video thật:
-
-```bash
-openarm-retarget demo \
-  --video data/raw_videos/demo_001.mp4 \
-  --name demo_001 \
-  --render
-```
-
-Đầu ra nằm trong:
-
-```text
-data/egoworld/
-data/hand_pose/
-data/robot_targets/
-data/robot_traj/
-data/datasets/
-outputs/plots/
-outputs/debug_videos/
-outputs/replay_videos/
-outputs/<run_name>_bimanual_quality_report.json
-```
-
-## Các bước
-
-### Bước 0: Kiểm tra môi trường
-
-**Mục tiêu:** xác nhận Python và dependency trước khi xử lý dữ liệu.
-
-```bash
-python scripts/00_check_install.py
-```
-
-**Đạt khi:** core package báo `[OK]`; package tùy chọn cần cho luồng đang chạy
-không báo thiếu.
-
-### Bước 1: Inspect OpenArm
-
-**Mục tiêu:** lấy đúng 14 joint, 14 arm actuator, 2 EE site, 2 gripper actuator
-và keyframe từ model thay vì hard-code.
-
-```bash
-python scripts/01_inspect_openarm_model.py
-```
-
-**Output:** `outputs/openarm_model_report.txt`.
-
-OpenArm MuJoCo 2.0.0 hiện được nhận diện với:
-
-```text
-model: cell.xml
-left EE: left_ee_control_point
-right EE: right_ee_control_point
-left joints: openarm_left_joint1 ... openarm_left_joint7
-right joints: openarm_right_joint1 ... openarm_right_joint7
-left/right gripper: left_finger1_ctrl / right_finger1_ctrl
-home EE: left [0.401, 0.1535, 1.12], right [0.401, -0.1535, 1.12] m
-```
-
-### Bước 2: Trích xuất hand pose
-
-**Mục tiêu:** lấy riêng wrist và 5 fingertip của tay trái/phải bằng MediaPipe.
-
-```bash
-python scripts/02_extract_hand_pose.py \
-  --video data/raw_videos/demo_001.mp4 \
-  --output data/hand_pose/demo_001_hand_pose.npz \
-  --debug-video outputs/debug_videos/demo_001_hand_debug.mp4
-```
-
-**Output:** `left_*`, `right_*`, hai valid mask và video debug màu riêng từng tay.
-
-**Đạt khi:** cả `left_valid` và `right_valid` đạt tối thiểu 90%.
-
-### Bước 3: Phát hiện pinch
-
-**Mục tiêu:** tạo `left_gripper_cmd` và `right_gripper_cmd` độc lập.
-
-```bash
-python scripts/03_detect_pinch.py \
-  --input data/hand_pose/demo_001_hand_pose.npz \
-  --output data/hand_pose/demo_001_pinch.npz \
-  --plot outputs/plots/demo_001_pinch.png
-```
-
-Hysteresis dùng hai ngưỡng: đóng ở `0.045`, mở ở `0.065`; vùng giữa giữ trạng
-thái trước. Mỗi chuyển trạng thái phải ổn định ít nhất 3 frame để loại xung
-pinch giả khi tay vừa vào khung.
-
-Khoảng cách pinch là khoảng cách nhỏ nhất từ đầu ngón cái đến đầu ngón trỏ,
-giữa, áp út hoặc út. Quy ước lệnh là `0 = gripper mở`, `1 = gripper đóng`.
-
-![Left pinch](docs/images/left_pinch_detection.png)
-![Right pinch](docs/images/right_pinch_detection.png)
-
-### Bước 4: Làm mượt cổ tay
-
-**Mục tiêu:** nội suy frame mất landmark, moving average và giới hạn vận tốc.
-
-```bash
-python scripts/04_smooth_wrist.py \
-  --input data/hand_pose/demo_001_pinch.npz \
-  --output data/hand_pose/demo_001_smooth.npz \
-  --window 7 \
-  --plot outputs/plots/demo_001_smoothing.png
-```
-
-![Wrist smoothing](docs/images/wrist_smoothing.png)
-
-### Bước 5: Retarget vào workspace OpenArm
-
-**Mục tiêu:** ánh xạ trục camera sang robot, scale chuyển động và clamp workspace.
-
-```bash
-python scripts/05_retarget_wrist_to_openarm.py \
-  --input data/hand_pose/demo_001_smooth.npz \
-  --output data/robot_targets/demo_001_target.npz \
-  --plot outputs/plots/demo_001_target.png
-```
-
-`configs/hand_tracking.yaml` hiện tại dùng `swap_left_right: false`, phản ánh góc nhìn ego-centric. Trục hình ảnh được ánh xạ thẳng sang robot: `human_x -> y`, `human_z -> x` (không cần đảo chiều tiến lùi hay trái phải vì góc nhìn camera trùng với tay robot).
-
-![Target trajectory](docs/images/target_trajectory.png)
-
-### Bước 6: Giải IK
-
-**Mục tiêu:** giải đồng thời sai số 6D của hai EE sang 14 arm joint bằng
-Jacobian damped least-squares, có joint limit và velocity clamp.
-
-```bash
-python scripts/06_openarm_ik.py \
-  --input data/robot_targets/demo_001_target.npz \
-  --output data/robot_traj/demo_001_qpos.npz \
-  --plot outputs/plots/demo_001_ik_error.png
-```
-
-**Đạt MVP:** mean error `< 5 cm`, không frame nào `> 20 cm`.
-
-![Left IK error](docs/images/left_ik_error.png)
-![Right IK error](docs/images/right_ik_error.png)
-
-### Bước 7: Replay MuJoCo
-
-**Mục tiêu:** phát lại cả 14 joint và hai gripper trong cùng timestep.
-
-```bash
-# Debug chính xác trajectory
-python scripts/07_replay_openarm_mujoco.py \
-  --traj data/robot_traj/demo_001_qpos.npz \
-  --mode kinematic \
-  --output outputs/replay_videos/demo_001.mp4
-
-# Kiểm tra position actuators
-python scripts/07_replay_openarm_mujoco.py \
-  --traj data/robot_traj/demo_001_qpos.npz \
-  --mode actuator
-```
-
-Video mặc định: `960x720`, `30 FPS`, camera `camera_ceiling`. Replay động học
-gán đồng thời cả hai finger joint của mỗi gripper.
-
-### Bước 8: Đóng gói dataset
-
-**Mục tiêu:** tạo observation/action dataset có thể load lại mà không dùng
-pickle.
-
-```bash
-python scripts/08_log_dataset.py \
-  --smooth data/hand_pose/demo_001_smooth.npz \
-  --target data/robot_targets/demo_001_target.npz \
-  --traj data/robot_traj/demo_001_qpos.npz \
-  --output data/datasets/demo_001_dataset.npz
-```
-
-Dataset chứa wrist, target, EE pose, 7+7 joint target và gripper state của cả hai
-bên.
-
-### Bước 9: Baseline policy
-
-**Mục tiêu:** kiểm tra dataset có học được quan hệ state-to-next-action.
-
-```bash
-python scripts/09_train_baseline_policy.py \
-  --dataset data/datasets/demo_001_dataset.npz \
-  --output models/openarm_baseline.joblib
-```
-
-Baseline dùng MLP cho 14 arm joints và classifier riêng cho mỗi gripper. Đây là
-sanity check, không thay thế bimanual IK.
-
-## Kiểm thử
-
-```bash
 pytest -q
 ```
-
-Test suite bao phủ schema hai tay, pinch độc lập, smoothing, retarget, model
-discovery, Jacobian `6x14`, hai gripper, dataset và pipeline bimanual end-to-end.
-
-## Cấu hình
-
-| File | Nội dung |
-|---|---|
-| `configs/hand_tracking.yaml` | MediaPipe backend, confidence, handedness |
-| `configs/pinch.yaml` | Ngưỡng close/open và invalid policy |
-| `configs/retarget.yaml` | Origin, scale, axis mapping, workspace |
-| `configs/bimanual_retarget.yaml` | Origin/workspace riêng tay trái và phải |
-| `configs/ik.yaml` | Tolerance, damping, step và velocity limit |
-| `configs/openarm.yaml` | MJCF, hai side, EE/gripper discovery, camera, render |
-| `configs/live.yaml` | Camera, latency, safety và live display |
-
-## Trạng thái
-
-Chi tiết nghiệm thu nằm trong [PROJECT_REPORT.md](PROJECT_REPORT.md); thiết kế
-ban đầu nằm trong [PROJECT_PLAN.md](PROJECT_PLAN.md).
-
-Đường synthetic và OpenArm MuJoCo đã được kiểm chứng end-to-end. Backend
-MediaPipe Tasks và model chính thức đã khởi tạo thành công. Repo không chứa
-video tay thật, vì vậy tỷ lệ tracking trên camera thực cần được đo bằng video
-của người vận hành.
-
-Kế hoạch tuần 1-4 offline và tuần 5 live
-`webcam -> bimanual IK -> MuJoCo` đã hoàn thành.
-
-## Nguồn
-
-- [OpenArm MuJoCo](https://github.com/enactic/openarm_mujoco)
-- [MuJoCo Python](https://mujoco.readthedocs.io/en/stable/python.html)
-- [MediaPipe Hand Landmarker for Python](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/python)
-- [OpenCV Video I/O](https://docs.opencv.org/4.x/d4/d15/group__videoio__flags__base.html)

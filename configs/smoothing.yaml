@@ -1,26 +1,7 @@
 # Smoothing configuration for wrist position filtering.
-# Used by both single-arm and bimanual pipelines.
-#
-# Phase 2C: depth_window — larger window for z-axis (depth) smoothing
-# Phase 3A: max_jump — outlier rejection threshold
-# Phase 3B: forward_backward — zero-phase lag filter
+# Maintained pipeline: interpolate missing frames, apply centered moving
+# average, then clamp velocity. Later experimental smoothing variants were
+# removed because factory002_middle_phaseB was the more accurate run.
 
-# Moving average window size for x,y axes
 window: 7
-
-# Maximum speed clamp (normalized units / second)
 max_speed: 2.0
-
-# Outlier rejection: max frame-to-frame jump in normalized coords.
-# Jumps larger than this are marked invalid before smoothing.
-# Set to 0 to disable outlier rejection.
-max_jump: 0.15
-
-# Forward-backward smoothing: applies moving average forward then backward
-# to eliminate phase lag. Recommended True for offline processing.
-forward_backward: true
-
-# Separate depth smoothing window: larger window for z-axis (depth).
-# Depth from MediaPipe world landmarks or palm_scale is noisier than x,y.
-# Set to null/omit to use the same window as x,y.
-depth_window: 15

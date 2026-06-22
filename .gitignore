@@ -24,12 +24,16 @@ outputs/live/*
 !outputs/**/.gitkeep
 outputs/openarm_model_report.txt
 outputs/*_quality_report.json
+outputs/external_trials/
 
 # Local report generator and generated documents
 /local_research_report/
+/report_local/
 
 models/*.task
 models/*.joblib
+external_repos/
+external_weights/
 
 # Yolo/EgoForce (inferior method, not maintained)
 .cache/

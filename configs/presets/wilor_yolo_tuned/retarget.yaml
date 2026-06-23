@@ -1,0 +1,13 @@
+openarm_origin: [0.401, 0.1535, 1.12]
+scale:
+  x: 0.35
+  y: 0.50
+  z: 0.25
+axis_mapping:
+  human_x: y
+  human_y: z_negative
+  human_z: x
+workspace_limit:
+  x: [0.15, 0.70]
+  y: [-0.15, 0.50]
+  z: [0.65, 1.35]

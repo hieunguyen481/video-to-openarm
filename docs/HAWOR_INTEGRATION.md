@@ -28,6 +28,12 @@ These assets are not committed to this repo.
 
 ## Readiness Check
 
+Prepare public assets:
+
+```powershell
+python scripts/prepare_hawor_public_assets.py
+```
+
 Run from the project root:
 
 ```powershell
@@ -37,20 +43,33 @@ python scripts/check_hawor_setup.py
 The checker reports every missing dependency or asset and prints the expected
 demo command once the setup is ready.
 
+Current local progress:
+
+- HaWoR checkpoint, infiller, and model config are downloaded.
+- WiLoR detector, DROID-SLAM weight, and Metric3D weight are downloaded.
+- A local `ffmpeg.exe` can be placed in `external_repos/HaWoR/` and is accepted
+  by the checker.
+- MANO files are still required from the official MANO website.
+- PyTorch3D still needs a compatible install. On Windows this usually requires
+  either a matching prebuilt wheel or a build environment with Visual Studio C++
+  tools and CUDA toolkit (`cl` and `nvcc` on PATH).
+
 ## HaWoR Demo Command
 
 When the checker passes, run from the HaWoR checkout:
 
 ```powershell
-cd external_repos/HaWoR
-python demo.py --video_path ./example/video_0.mp4 --vis_mode world
+python scripts/run_hawor_demo.py --video example/video_0.mp4 --vis-mode world
 ```
 
 Camera-view visualization:
 
 ```powershell
-python demo.py --video_path ./example/video_0.mp4 --vis_mode cam
+python scripts/run_hawor_demo.py --video example/video_0.mp4 --vis-mode cam
 ```
+
+The runner sets `YOLO_CONFIG_DIR` inside the project and prepends the HaWoR root
+to `PATH` so the local `ffmpeg.exe` can be found.
 
 ## Expected HaWoR Outputs
 
@@ -79,6 +98,21 @@ pred_rot
 pred_hand_pose
 pred_betas
 pred_valid
+```
+
+## Required Manual Asset
+
+MANO is license-gated and must be downloaded manually from:
+
+```text
+https://mano.is.tue.mpg.de
+```
+
+Place the files as:
+
+```text
+external_repos/HaWoR/_DATA/data/mano/MANO_RIGHT.pkl
+external_repos/HaWoR/_DATA/data_left/mano_left/MANO_LEFT.pkl
 ```
 
 ## Planned OpenArm Adapter

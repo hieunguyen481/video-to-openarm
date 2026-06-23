@@ -129,7 +129,9 @@ heavier dependency stack and external assets.
 Check HaWoR readiness:
 
 ```powershell
+python scripts/prepare_hawor_public_assets.py
 python scripts/check_hawor_setup.py
+python scripts/run_hawor_demo.py --video example/video_0.mp4 --vis-mode world
 ```
 
 See `docs/HAWOR_INTEGRATION.md` for the HaWoR setup and planned OpenArm adapter.

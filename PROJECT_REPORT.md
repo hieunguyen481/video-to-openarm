@@ -137,7 +137,7 @@ HaWoR:
   stack: MANO assets, PyTorch3D, DROID-SLAM/CUDA components, and depth model
   weights.
 - Tracked integration support currently consists of `scripts/check_hawor_setup.py`
-  and `docs/HAWOR_INTEGRATION.md`.
+  `scripts/prepare_hawor_public_assets.py`, and `docs/HAWOR_INTEGRATION.md`.
 
 ## Maintained Code
 
@@ -155,6 +155,8 @@ Core modules:
 - `scripts/extract_wilor_yolo_pose.py`: WiLoR YOLO keypoints to bimanual pose.
 - `scripts/run_factory002_wilor_tuned.py`: selected tuned replay workflow.
 - `scripts/check_hawor_setup.py`: verifies optional HaWoR dependencies/assets.
+- `scripts/prepare_hawor_public_assets.py`: downloads/copies public HaWoR assets.
+- `scripts/run_hawor_demo.py`: runs HaWoR with local YOLO/ffmpeg environment.
 
 Local/ignored areas:
 

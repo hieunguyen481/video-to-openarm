@@ -79,8 +79,13 @@ PYTHON_MODULES = (
     ("joblib", True),
     ("natsort", True),
     ("pycocotools", True),
+    ("skimage", True),
+    ("trimesh", True),
+    ("easydict", True),
+    ("loguru", True),
+    ("mmengine", True),
     ("pytorch3d", True),
-    ("aitviewer", False),
+    ("aitviewer", True),
 )
 
 
@@ -103,12 +108,28 @@ def check_module(name: str, required: bool) -> Check:
     )
 
 
-def check_ffmpeg() -> Check:
+def check_ffmpeg(root: Path) -> Check:
     exe = shutil.which("ffmpeg")
+    local_exe = root / "ffmpeg.exe"
+    if exe is None and local_exe.is_file():
+        exe = str(local_exe)
     return Check(
         name="ffmpeg",
         ok=exe is not None,
-        detail=exe if exe is not None else "ffmpeg is not on PATH.",
+        detail=exe if exe is not None else (
+            "ffmpeg is not on PATH. Install ffmpeg or place ffmpeg.exe in "
+            "the HaWoR root."
+        ),
+    )
+
+
+def check_tool(name: str, required: bool = False) -> Check:
+    exe = shutil.which(name)
+    return Check(
+        name=f"Build tool: {name}",
+        ok=exe is not None,
+        detail=exe if exe is not None else f"{name} is not on PATH.",
+        required=required,
     )
 
 
@@ -169,7 +190,9 @@ def main() -> int:
     for name, relative, hint in REQUIRED_FILES:
         checks.append(check_file(root, name, relative, hint))
     checks.extend(check_module(name, required) for name, required in PYTHON_MODULES)
-    checks.append(check_ffmpeg())
+    checks.append(check_ffmpeg(root))
+    checks.append(check_tool("cl"))
+    checks.append(check_tool("nvcc"))
     checks.append(check_cuda())
 
     required_ok = all(item.ok for item in checks if item.required)

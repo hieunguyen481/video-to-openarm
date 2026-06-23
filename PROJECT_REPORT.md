@@ -136,6 +136,8 @@ HaWoR:
 - Not used in the selected result because local execution requires a heavier
   stack: MANO assets, PyTorch3D, DROID-SLAM/CUDA components, and depth model
   weights.
+- Tracked integration support currently consists of `scripts/check_hawor_setup.py`
+  and `docs/HAWOR_INTEGRATION.md`.
 
 ## Maintained Code
 
@@ -152,6 +154,7 @@ Core modules:
 - `dataset.py`: NPZ dataset export.
 - `scripts/extract_wilor_yolo_pose.py`: WiLoR YOLO keypoints to bimanual pose.
 - `scripts/run_factory002_wilor_tuned.py`: selected tuned replay workflow.
+- `scripts/check_hawor_setup.py`: verifies optional HaWoR dependencies/assets.
 
 Local/ignored areas:
 
@@ -168,5 +171,7 @@ Local/ignored areas:
 - Add batch evaluation across multiple factory videos.
 - Decide whether WiLoR dependency and weight setup should be documented as an
   optional install profile.
+- Run HaWoR once its external assets are present, then convert
+  `world_space_res.pth` into OpenArm targets for comparison.
 - Add collision avoidance and real OpenArm hardware control later if the project
   moves beyond MuJoCo replay.

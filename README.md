@@ -126,6 +126,14 @@ factory002_middle improvement without requiring MANO or full 3D reconstruction.
 HaWoR remains a future egocentric/world-space 3D direction because it needs a
 heavier dependency stack and external assets.
 
+Check HaWoR readiness:
+
+```powershell
+python scripts/check_hawor_setup.py
+```
+
+See `docs/HAWOR_INTEGRATION.md` for the HaWoR setup and planned OpenArm adapter.
+
 ## Reports
 
 - `PROJECT_REPORT.md`: compact current status and accepted result.

@@ -94,7 +94,18 @@ git.
 
 ## Reproduce The Selected Run
 
-After exporting WiLoR YOLO hand pose to:
+Export WiLoR YOLO hand pose:
+
+```powershell
+python scripts/extract_wilor_yolo_pose.py `
+  --video data/raw_videos/factory002_middle.mp4 `
+  --model external_repos/WiLoR/pretrained_models/detector.pt `
+  --output outputs/external_trials/wilor_yolo/factory002_middle_wilor_yolo_hand_pose.npz `
+  --debug-video outputs/external_trials/wilor_yolo/factory002_middle_wilor_yolo_hand_debug.mp4
+```
+
+This uses only WiLoR's YOLO hand keypoint detector and does not require MANO.
+Then run the tuned OpenArm replay from:
 
 ```text
 outputs/external_trials/wilor_yolo/factory002_middle_wilor_yolo_hand_pose.npz
@@ -139,6 +150,8 @@ Core modules:
 - `comparison_video.py`: human-vs-robot video composition.
 - `live_teleop.py` and `live_control.py`: webcam teleoperation.
 - `dataset.py`: NPZ dataset export.
+- `scripts/extract_wilor_yolo_pose.py`: WiLoR YOLO keypoints to bimanual pose.
+- `scripts/run_factory002_wilor_tuned.py`: selected tuned replay workflow.
 
 Local/ignored areas:
 
@@ -152,7 +165,8 @@ Local/ignored areas:
 - Verify the tuned result visually on more videos, not only `factory002_middle`.
 - Decide whether to use the post-filter variant when left-hand detector glitches
   are visually obvious.
-- Add a tracked WiLoR adapter only if the WiLoR dependency/weight/MANO setup is
-  accepted as part of the official project workflow.
+- Add batch evaluation across multiple factory videos.
+- Decide whether WiLoR dependency and weight setup should be documented as an
+  optional install profile.
 - Add collision avoidance and real OpenArm hardware control later if the project
   moves beyond MuJoCo replay.

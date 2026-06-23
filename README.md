@@ -5,9 +5,8 @@ trong MuJoCo: 14 joint tay, hai end-effector va hai gripper.
 
 Trang thai hien tai: giu pipeline on dinh dung MediaPipe hand landmarks,
 pinch hysteresis, palm-scale depth proxy, retarget per-axis va bimanual
-Jacobian DLS IK. Cac nhanh thu nghiem sau do nhu Yolo/EgoForce, world3d depth
-va smoothing nang cao da bi loai khoi code chinh vi khong cho ket qua tot hon
-tren factory002_middle.
+Jacobian DLS IK. Voi factory002_middle, WiLoR YOLO keypoints + preset tuned
+hien la ket qua cai thien tot nhat; PhaseB duoc giu lam baseline on dinh.
 
 ## Ket qua chinh
 
@@ -24,10 +23,10 @@ tracking L/R    = 97.22% / 97.22%
 Factory002 selected run:
 
 ```text
-selected video  = outputs/final_videos/factory002_middle_phaseB/human_vs_robot_comparison.mp4
-method          = PhaseB per-axis retarget scale
-scale           = x=0.35, y=0.50, z=0.25
-status          = selected as the best current factory002_middle result
+baseline video  = outputs/final_videos/factory002_middle_phaseB/human_vs_robot_comparison.mp4
+baseline        = PhaseB per-axis retarget scale
+selected preset = configs/presets/wilor_yolo_tuned/
+selected result = WiLoR YOLO tuned, mean IK error 1.22 cm, converged 93.1%
 ```
 
 ## Pipeline
@@ -77,6 +76,22 @@ Run the pipeline on a real video:
 openarm-retarget demo --video data/raw_videos/demo_001.mp4 --name demo_001 --render
 ```
 
+Extract WiLoR YOLO keypoints to the bimanual pose schema:
+
+```powershell
+python scripts/extract_wilor_yolo_pose.py `
+  --video data/raw_videos/factory002_middle.mp4 `
+  --model external_repos/WiLoR/pretrained_models/detector.pt `
+  --output outputs/external_trials/wilor_yolo/factory002_middle_wilor_yolo_hand_pose.npz `
+  --debug-video outputs/external_trials/wilor_yolo/factory002_middle_wilor_yolo_hand_debug.mp4
+```
+
+Run the selected tuned OpenArm replay from the extracted WiLoR pose:
+
+```powershell
+python scripts/run_factory002_wilor_tuned.py
+```
+
 Open the MuJoCo viewer:
 
 ```powershell
@@ -102,10 +117,14 @@ openarm-retarget compare `
 
 The maintained step scripts are `scripts/00_check_install.py` through
 `scripts/12_create_comparison_video.py`, plus `download_hand_model.py`,
-`download_egoworld.py`, `generate_synthetic_hand_pose.py`, and `read_quality.py`.
+`download_egoworld.py`, `generate_synthetic_hand_pose.py`, `read_quality.py`,
+`extract_wilor_yolo_pose.py`, and `run_factory002_wilor_tuned.py`.
 
 Experimental Yolo/EgoForce/world3d helper scripts were removed from the tracked
-repo because they are not part of the selected PhaseB pipeline.
+repo. WiLoR YOLO extraction is now tracked because it produced the selected
+factory002_middle improvement without requiring MANO or full 3D reconstruction.
+HaWoR remains a future egocentric/world-space 3D direction because it needs a
+heavier dependency stack and external assets.
 
 ## Reports
 

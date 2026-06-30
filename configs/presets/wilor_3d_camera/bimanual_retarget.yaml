@@ -1,0 +1,24 @@
+left:
+  openarm_origin: [0.401, 0.1535, 1.12]
+  human_reference: [0.5, 0.5, 0.5]
+  scale: {x: 0.35, y: 0.35, z: 0.10}
+  axis_mapping:
+    human_x: y_negative
+    human_y: z_negative
+    human_z: x
+  workspace_limit:
+    x: [0.15, 0.70]
+    y: [0.00, 0.55]
+    z: [0.65, 1.35]
+right:
+  openarm_origin: [0.401, -0.1535, 1.12]
+  human_reference: [0.5, 0.5, 0.5]
+  scale: {x: 0.35, y: 0.35, z: 0.10}
+  axis_mapping:
+    human_x: y_negative
+    human_y: z_negative
+    human_z: x
+  workspace_limit:
+    x: [0.15, 0.70]
+    y: [-0.55, 0.00]
+    z: [0.65, 1.35]

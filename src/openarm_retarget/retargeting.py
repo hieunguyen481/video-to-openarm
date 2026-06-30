@@ -37,7 +37,14 @@ def retarget_wrist(
     )
     mapping = config.get("axis_mapping", {})
     transformed = np.zeros_like(wrist)
-    delta = wrist - wrist[0]
+    reference_config = config.get("human_reference")
+    if reference_config is None:
+        reference = wrist[0]
+    else:
+        reference = np.asarray(reference_config, dtype=float)
+        if reference.shape != (3,):
+            raise ValueError("human_reference must contain x, y, z")
+    delta = wrist - reference
     for human_index, human_axis in enumerate(("human_x", "human_y", "human_z")):
         robot_index, sign = _parse_mapping(mapping.get(human_axis, "xyz"[human_index]))
         transformed[:, robot_index] += sign * delta[:, human_index] * scale[human_index]
@@ -52,4 +59,3 @@ def retarget_wrist(
             target[:, axis_index], bounds[0], bounds[1]
         )
     return target.astype(np.float32)
-

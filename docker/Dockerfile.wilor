@@ -1,0 +1,67 @@
+FROM nvidia/cuda:11.7.1-cudnn8-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    CUDA_HOME=/usr/local/cuda \
+    PYOPENGL_PLATFORM=egl \
+    YOLO_CONFIG_DIR=/tmp/Ultralytics \
+    PYTHONPATH=/workspace/external_repos/WiLoR
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    python3-distutils \
+    build-essential \
+    git \
+    ffmpeg \
+    libegl1 \
+    libgl1 \
+    libglib2.0-0 \
+    libgles2 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3.10 /usr/local/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/local/bin/pip && \
+    python -m pip install --upgrade \
+        pip==23.3.2 \
+        setuptools==68.2.2 \
+        wheel==0.41.3
+
+RUN python -m pip install \
+    torch==2.0.1+cu117 \
+    torchvision==0.15.2+cu117 \
+    --index-url https://download.pytorch.org/whl/cu117 \
+    --no-deps
+
+# Install the inference-time dependencies explicitly. Omitting Triton avoids
+# its cmake/lit build dependency; WiLoR only needs Triton for torch.compile
+# in the optional --fast demo mode.
+RUN python -m pip install \
+    filelock \
+    typing-extensions \
+    sympy \
+    networkx \
+    jinja2 \
+    requests \
+    pillow
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-opengl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/requirements-wilor.txt /tmp/requirements-wilor.txt
+RUN python -m pip install \
+    --retries 10 \
+    --timeout 120 \
+    -r /tmp/requirements-wilor.txt \
+    && python -m pip install \
+    --no-deps \
+    pyrender==0.1.45
+
+WORKDIR /workspace
+CMD ["bash"]

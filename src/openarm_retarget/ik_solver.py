@@ -197,6 +197,10 @@ class BimanualJacobianIKSolver:
         self.step_size = float(config.get("step_size", 0.5))
         self.max_delta_q = float(config.get("max_delta_q", 0.05))
         self.max_frame_delta_q = float(config.get("max_frame_delta_q", 0.10))
+        self.orientation_weight = float(config.get("orientation_weight", 0.0))
+        self.orientation_tolerance = float(
+            config.get("orientation_tolerance", 0.35)
+        )
         if min(
             self.tolerance,
             self.max_iterations,
@@ -206,6 +210,8 @@ class BimanualJacobianIKSolver:
             self.max_frame_delta_q,
         ) <= 0:
             raise ValueError("All IK tuning parameters must be positive")
+        if self.orientation_weight < 0 or self.orientation_tolerance <= 0:
+            raise ValueError("Invalid orientation IK tuning parameters")
 
         self.site_ids: dict[str, int] = {}
         self.joint_ids: dict[str, np.ndarray] = {}
@@ -250,6 +256,8 @@ class BimanualJacobianIKSolver:
         self,
         left_target_pos: np.ndarray,
         right_target_pos: np.ndarray,
+        left_target_rot: np.ndarray | None = None,
+        right_target_rot: np.ndarray | None = None,
     ) -> BimanualIKResult:
         mujoco = _mujoco()
         targets = {
@@ -265,6 +273,20 @@ class BimanualJacobianIKSolver:
                 raise ValueError(f"{side}_target_pos contains NaN or infinite values")
         if len(targets["left"]) != len(targets["right"]):
             raise ValueError("Left and right targets must have the same length")
+        rotation_targets = None
+        if left_target_rot is not None or right_target_rot is not None:
+            if left_target_rot is None or right_target_rot is None:
+                raise ValueError("Both orientation targets must be provided")
+            rotation_targets = {
+                "left": np.asarray(left_target_rot, dtype=float),
+                "right": np.asarray(right_target_rot, dtype=float),
+            }
+            expected = (len(targets["left"]), 3, 3)
+            for side, rotations in rotation_targets.items():
+                if rotations.shape != expected or not np.all(np.isfinite(rotations)):
+                    raise ValueError(
+                        f"{side}_target_rot must have shape {expected}"
+                    )
 
         data = mujoco.MjData(self.model)
         reset_home(self.model, data, self.info.home_keyframe)
@@ -284,6 +306,10 @@ class BimanualJacobianIKSolver:
             side: np.zeros((3, self.model.nv), dtype=np.float64)
             for side in ("left", "right")
         }
+        jac_rot = {
+            side: np.zeros((3, self.model.nv), dtype=np.float64)
+            for side in ("left", "right")
+        }
         previous_arm = data.qpos[self.all_qpos_indices].copy()
 
         for frame_index in range(frame_count):
@@ -300,15 +326,40 @@ class BimanualJacobianIKSolver:
                     side: float(np.linalg.norm(delta))
                     for side, delta in deltas.items()
                 }
-                combined_error = float(
-                    np.linalg.norm(
-                        np.concatenate((deltas["left"], deltas["right"]))
-                    )
-                )
+                rotation_deltas: dict[str, np.ndarray] = {}
+                if rotation_targets is not None and self.orientation_weight > 0:
+                    for side in ("left", "right"):
+                        current = data.site_xmat[self.site_ids[side]].reshape(3, 3)
+                        error_matrix = (
+                            rotation_targets[side][frame_index] @ current.T
+                        )
+                        rotation_deltas[side] = 0.5 * np.asarray(
+                            [
+                                error_matrix[2, 1] - error_matrix[1, 2],
+                                error_matrix[0, 2] - error_matrix[2, 0],
+                                error_matrix[1, 0] - error_matrix[0, 1],
+                            ]
+                        )
+                error_parts = []
+                for side in ("left", "right"):
+                    error_parts.append(deltas[side])
+                    if rotation_deltas:
+                        error_parts.append(
+                            self.orientation_weight * rotation_deltas[side]
+                        )
+                combined_error = float(np.linalg.norm(np.concatenate(error_parts)))
                 if combined_error < best_error:
                     best_error = combined_error
                     best_qpos = data.qpos.copy()
-                if max(side_errors.values()) <= self.tolerance:
+                orientation_ready = (
+                    not rotation_deltas
+                    or max(
+                        np.linalg.norm(value)
+                        for value in rotation_deltas.values()
+                    )
+                    <= self.orientation_tolerance
+                )
+                if max(side_errors.values()) <= self.tolerance and orientation_ready:
                     converged[frame_index] = True
                     iterations[frame_index] = iteration - 1
                     break
@@ -316,21 +367,26 @@ class BimanualJacobianIKSolver:
                 jacobian_blocks = []
                 for side in ("left", "right"):
                     jac_pos[side].fill(0)
+                    jac_rot[side].fill(0)
                     mujoco.mj_jacSite(
                         self.model,
                         data,
                         jac_pos[side],
-                        None,
+                        jac_rot[side] if rotation_deltas else None,
                         self.site_ids[side],
                     )
-                    jacobian_blocks.append(
-                        jac_pos[side][:, self.all_dof_indices]
-                    )
+                    block = [jac_pos[side][:, self.all_dof_indices]]
+                    if rotation_deltas:
+                        block.append(
+                            self.orientation_weight
+                            * jac_rot[side][:, self.all_dof_indices]
+                        )
+                    jacobian_blocks.append(np.vstack(block))
                 jacobian = np.vstack(jacobian_blocks)
-                delta = np.concatenate((deltas["left"], deltas["right"]))
+                delta = np.concatenate(error_parts)
                 regularized = (
                     jacobian @ jacobian.T
-                    + (self.damping**2) * np.eye(6)
+                    + (self.damping**2) * np.eye(jacobian.shape[0])
                 )
                 delta_q = jacobian.T @ np.linalg.solve(regularized, delta)
                 delta_q = np.clip(

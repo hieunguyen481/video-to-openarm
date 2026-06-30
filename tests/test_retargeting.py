@@ -63,3 +63,22 @@ def test_ego_centric_mapping_no_mirror():
     # human_y=2 * scale_y=0.2 -> robot_z -= 0.4 -> 1.1-0.4 = 0.7
     # human_z=3 * scale_z=0.05 -> robot_x += 0.15 -> 0.4+0.15 = 0.55
     np.testing.assert_allclose(target[1], [0.55, 0.2, 0.7])
+
+
+def test_explicit_human_reference_preserves_absolute_layout():
+    wrist = np.array([[0.25, 0.4, 0.5], [0.75, 0.6, 0.5]], dtype=float)
+    config = {
+        "openarm_origin": [0.4, 0.0, 1.1],
+        "human_reference": [0.5, 0.5, 0.5],
+        "scale": {"x": 0.4, "y": 0.4, "z": 0.2},
+        "axis_mapping": {
+            "human_x": "y_negative",
+            "human_y": "z_negative",
+            "human_z": "x",
+        },
+    }
+
+    target = retarget_wrist(wrist, config)
+
+    np.testing.assert_allclose(target[0], [0.4, 0.1, 1.14])
+    np.testing.assert_allclose(target[1], [0.4, -0.1, 1.06])

@@ -1,0 +1,69 @@
+FROM video-to-openarm/hawor-base:cu117-torch113
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    CUDA_HOME=/usr/local/cuda \
+    FORCE_CUDA=1 \
+    TORCH_CUDA_ARCH_LIST=8.6 \
+    MAX_JOBS=1 \
+    PYOPENGL_PLATFORM=egl \
+    PYTHONPATH=/opt/droid-slam:/workspace/external_repos/HaWoR
+
+# Libraries needed by OpenCV, pyrender, moderngl and headless rendering.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libosmesa6-dev \
+    libglfw3-dev \
+    libglew-dev \
+    freeglut3-dev \
+    libx11-dev \
+    libxrandr-dev \
+    libxi-dev \
+    libxinerama-dev \
+    libxcursor-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/requirements-hawor-core.txt /tmp/requirements-hawor-core.txt
+
+# Prepare packages that are often needed while compiling dependencies.
+RUN python -m pip install \
+    numpy==1.26.4 \
+    cython==0.29.36 \
+    packaging \
+    ninja \
+    iopath \
+    fvcore
+
+# Install ordinary HaWoR dependencies.
+RUN python -m pip install \
+    -r /tmp/requirements-hawor-core.txt
+
+# Versions requested separately by the official HaWoR installation guide.
+RUN python -m pip install \
+    pytorch-lightning==2.2.4 \
+    --no-deps \
+    && python -m pip install \
+    lightning-utilities \
+    torchmetrics==1.4.0
+
+# PyTorch3D version compatible with PyTorch 1.13.
+RUN python -m pip install \
+    --no-build-isolation \
+    "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.2"
+
+# HaWoR requests torch-scatter 2.1.2.
+# No matching PyTorch 1.13/CUDA 11.7 wheel is published, so compile from source.
+RUN python -m pip install \
+    --no-build-isolation \
+    torch-scatter==2.1.2
+
+# Copy only DROID-SLAM source and its initialized submodules.
+COPY external_repos/HaWoR/thirdparty/DROID-SLAM /opt/droid-slam
+
+# The HaWoR copy of DROID-SLAM builds both droid_backends and lietorch.
+RUN cd /opt/droid-slam \
+    && python setup.py install
+
+WORKDIR /workspace
+
+CMD ["bash"]

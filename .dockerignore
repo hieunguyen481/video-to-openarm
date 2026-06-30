@@ -1,0 +1,16 @@
+
+# HaWoR Docker build exclusions
+.git/
+**/.git/
+**/__pycache__/
+**/*.pyc
+
+data/
+outputs/
+models/
+report_local/
+
+external_repos/WiLoR/
+external_repos/HaWoR/weights/
+external_repos/HaWoR/_DATA/
+external_repos/HaWoR/thirdparty/Metric3D/weights/

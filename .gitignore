@@ -1,5 +1,7 @@
 ﻿.venv/
 .venv310/
+.venv_hawor310/
+venv_hawor310/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -25,6 +27,10 @@ outputs/live/*
 outputs/openarm_model_report.txt
 outputs/*_quality_report.json
 outputs/external_trials/
+outputs/logs/
+outputs/stiched_hawor_world/
+outputs/wilor_3d_camera/
+outputs/*_chunked_summary.json
 
 # Local report generator and generated documents
 /local_research_report/

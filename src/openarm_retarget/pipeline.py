@@ -121,6 +121,59 @@ def _configs(config_dir: Path) -> dict[str, dict[str, Any]]:
     return configs
 
 
+def _relative_orientation_targets(
+    pose: Mapping[str, Any],
+    model: Any,
+    model_info: Any,
+    *,
+    max_angle: float,
+) -> dict[str, np.ndarray] | None:
+    keys = {side: f"{side}_global_orient" for side in ("left", "right")}
+    if not all(key in pose for key in keys.values()):
+        return None
+    mujoco = __import__("mujoco")
+    data = mujoco.MjData(model)
+    from .openarm_model import reset_home
+
+    reset_home(model, data, model_info.home_keyframe)
+    mujoco.mj_forward(model, data)
+    camera_to_robot = np.asarray(
+        [[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]],
+        dtype=np.float64,
+    )
+    reflection = np.diag([-1.0, 1.0, 1.0])
+    targets: dict[str, np.ndarray] = {}
+    for side in ("left", "right"):
+        rotations = np.asarray(pose[keys[side]], dtype=np.float64)
+        if rotations.ndim != 3 or rotations.shape[1:] != (3, 3):
+            raise ValueError(f"{keys[side]} must have shape [T, 3, 3]")
+        if side == "left":
+            rotations = reflection @ rotations @ reflection
+        relative = rotations @ rotations[0].T
+        robot_relative = (
+            camera_to_robot[None, :, :]
+            @ relative
+            @ camera_to_robot.T[None, :, :]
+        )
+        if max_angle > 0:
+            from scipy.spatial.transform import Rotation
+
+            rotvec = Rotation.from_matrix(robot_relative).as_rotvec()
+            angles = np.linalg.norm(rotvec, axis=1)
+            scale = np.minimum(1.0, max_angle / np.maximum(angles, 1e-9))
+            robot_relative = Rotation.from_rotvec(
+                rotvec * scale[:, None]
+            ).as_matrix()
+        site_id = mujoco.mj_name2id(
+            model,
+            mujoco.mjtObj.mjOBJ_SITE,
+            model_info.sides[side].ee_site,
+        )
+        home_rotation = data.site_xmat[site_id].reshape(3, 3).copy()
+        targets[side] = robot_relative @ home_rotation
+    return targets
+
+
 def run_from_pose(
     pose_data: Mapping[str, Any],
     *,
@@ -451,9 +504,31 @@ def run_bimanual_from_pose(
     )
 
     model, model_info = load_bimanual_openarm(configs["openarm"])
+    orientation_targets = _relative_orientation_targets(
+        pose,
+        model,
+        model_info,
+        max_angle=float(configs["ik"].get("orientation_max_angle", 0.6)),
+    )
+    if orientation_targets is not None:
+        for side in ("left", "right"):
+            target_data[f"{side}_target_rot"] = orientation_targets[side]
     ik_result = BimanualJacobianIKSolver(
         model, model_info, configs["ik"]
-    ).solve(targets["left"], targets["right"])
+    ).solve(
+        targets["left"],
+        targets["right"],
+        left_target_rot=(
+            orientation_targets["left"]
+            if orientation_targets is not None
+            else None
+        ),
+        right_target_rot=(
+            orientation_targets["right"]
+            if orientation_targets is not None
+            else None
+        ),
+    )
     trajectory_data = {
         "timestamps": pose["timestamps"],
         "qpos": ik_result.qpos,
@@ -643,4 +718,3 @@ def run_bimanual_egoworld(
         render=render,
         replay_mode=replay_mode,
     )
-

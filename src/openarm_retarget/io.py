@@ -50,6 +50,7 @@ def save_npz(
             temp_name = handle.name
         np.savez_compressed(temp_name, **payload)
         os.replace(temp_name, destination)
+        destination.chmod(0o644)
     finally:
         if temp_name and Path(temp_name).exists():
             Path(temp_name).unlink()
@@ -69,4 +70,3 @@ def metadata_from(data: Mapping[str, np.ndarray]) -> dict[str, Any]:
     if raw is None:
         return {}
     return json.loads(str(np.asarray(raw).item()))
-

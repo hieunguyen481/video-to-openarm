@@ -70,18 +70,18 @@ Việc thu hẹp này làm bài toán đủ rõ để kiểm chứng từng mô-
 
 ### 3.1 Ước lượng bàn tay từ camera đơn
 
-Với một điểm 3D trong hệ camera \((X,Y,Z)\), phép chiếu phối cảnh xấp xỉ:
+Với một điểm 3D trong hệ camera $(X,Y,Z)$, phép chiếu phối cảnh xấp xỉ:
 
-\[
+$$
 u=f_x\frac{X}{Z}+c_x,\qquad
 v=f_y\frac{Y}{Z}+c_y
-\]
+$$
 
-Từ một ảnh đơn, nhiều điểm 3D khác nhau có thể cho cùng tọa độ ảnh \((u,v)\). Vì vậy depth không xác định duy nhất nếu không có prior hình học, mô hình học sâu, chuyển động camera hoặc cảm biến bổ sung.
+Từ một ảnh đơn, nhiều điểm 3D khác nhau có thể cho cùng tọa độ ảnh $(u,v)$. Vì vậy depth không xác định duy nhất nếu không có prior hình học, mô hình học sâu, chuyển động camera hoặc cảm biến bổ sung.
 
 Các nhánh trong dự án xử lý vấn đề này theo ba mức:
 
-- **MediaPipe/YOLO 2D:** lấy \(x,y\) trên ảnh và dùng kích thước lòng bàn tay làm depth proxy.
+- **MediaPipe/YOLO 2D:** lấy $x,y$ trên ảnh và dùng kích thước lòng bàn tay làm depth proxy.
 - **WiLoR full-3D:** dự đoán MANO pose và camera translation để có khớp tay trong camera-space.
 - **HaWoR:** ước lượng hand pose theo world-space và kết hợp thông tin chuyển động camera/SLAM.
 
@@ -89,73 +89,73 @@ Các nhánh trong dự án xử lý vấn đề này theo ba mức:
 
 Baseline tính kích thước lòng bàn tay từ khoảng cách wrist đến các MCP:
 
-\[
+$$
 s_t=\frac{1}{4}\sum_{i\in\{5,9,13,17\}}
 \left\|p_{i,t}-p_{\text{wrist},t}\right\|
-\]
+$$
 
-Theo phối cảnh, bàn tay gần camera thường có kích thước ảnh lớn hơn. Tuy nhiên \(s_t\) còn thay đổi do xoay bàn tay, co ngón, che khuất và lỗi landmark; vì vậy nó chỉ là proxy, không phải depth vật lý.
+Theo phối cảnh, bàn tay gần camera thường có kích thước ảnh lớn hơn. Tuy nhiên $s_t$ còn thay đổi do xoay bàn tay, co ngón, che khuất và lỗi landmark; vì vậy nó chỉ là proxy, không phải depth vật lý.
 
 ### 3.3 Nhận dạng pinch
 
 Pinch được suy ra từ khoảng cách ngón cái đến các đầu ngón:
 
-\[
+$$
 d_{k,t}=\left\|p_{\text{thumb},t}-p_{k,t}\right\|
-\]
+$$
 
-Gripper đóng khi ít nhất một \(d_{k,t}\) nhỏ hơn ngưỡng đóng và mở khi vượt ngưỡng mở. Hysteresis cùng yêu cầu trạng thái ổn định qua nhiều frame giúp tránh rung đóng/mở và pinch giả khi tay mới xuất hiện.
+Gripper đóng khi ít nhất một $d_{k,t}$ nhỏ hơn ngưỡng đóng và mở khi vượt ngưỡng mở. Hysteresis cùng yêu cầu trạng thái ổn định qua nhiều frame giúp tránh rung đóng/mở và pinch giả khi tay mới xuất hiện.
 
 ### 3.4 Retargeting
 
-Retargeting biến quỹ đạo cổ tay người \(h_t\) thành target robot \(x_t\):
+Retargeting biến quỹ đạo cổ tay người $h_t$ thành target robot $x_t$:
 
-\[
+$$
 x_t=o_r+A\,S\,(h_t-h_{\text{ref}})
-\]
+$$
 
 Trong đó:
 
-- \(o_r\): origin của end-effector robot.
-- \(h_{\text{ref}}\): mốc người, ban đầu thường lấy frame đầu; về sau có thể cấu hình cố định.
-- \(S=\text{diag}(s_x,s_y,s_z)\): scale từng trục.
-- \(A\): ma trận đổi trục, đổi dấu và quy ước camera–robot.
+- $o_r$: origin của end-effector robot.
+- $h_{\text{ref}}$: mốc người, ban đầu thường lấy frame đầu; về sau có thể cấu hình cố định.
+- $S=\text{diag}(s_x,s_y,s_z)$: scale từng trục.
+- $A$: ma trận đổi trục, đổi dấu và quy ước camera–robot.
 
 Target sau đó được clip vào workspace mỗi tay. Scale quá lớn tạo target ngoài tầm với; scale quá nhỏ làm metric IK đẹp nhưng robot gần như không chuyển động. Do đó retarget phải cân bằng **độ chính xác, biên độ và tính giống chuyển động thật**.
 
 ### 3.5 Inverse kinematics bằng Jacobian DLS
 
-Với vị trí end-effector \(x(q)\), sai số tại một bước là:
+Với vị trí end-effector $x(q)$, sai số tại một bước là:
 
-\[
+$$
 e=x^*-x(q)
-\]
+$$
 
 Jacobian liên hệ thay đổi khớp và end-effector:
 
-\[
+$$
 \Delta x\approx J(q)\Delta q
-\]
+$$
 
 Damped least squares giải:
 
-\[
+$$
 \Delta q=J^T(JJ^T+\lambda^2I)^{-1}e
-\]
+$$
 
-Hệ hai tay ghép sai số và Jacobian của tay trái/phải thành một bài toán chung cho 14 joint. Damping giúp ổn định gần singularity; giới hạn \(\Delta q\) và thay đổi mỗi frame giúp quỹ đạo bớt giật.
+Hệ hai tay ghép sai số và Jacobian của tay trái/phải thành một bài toán chung cho 14 joint. Damping giúp ổn định gần singularity; giới hạn $\Delta q$ và thay đổi mỗi frame giúp quỹ đạo bớt giật.
 
 ### 3.6 IK có orientation
 
 WiLoR cung cấp ma trận global orientation. Sai số quay được xấp xỉ từ:
 
-\[
+$$
 R_e=R^*R^T
-\]
+$$
 
-và phần phản đối xứng của \(R_e\) tạo rotation error vector. Hệ thống ghép position error và rotation error:
+và phần phản đối xứng của $R_e$ tạo rotation error vector. Hệ thống ghép position error và rotation error:
 
-\[
+$$
 e_{\text{all}}=
 \begin{bmatrix}
 e_{p,L}\\
@@ -163,7 +163,7 @@ w_Re_{R,L}\\
 e_{p,R}\\
 w_Re_{R,R}
 \end{bmatrix}
-\]
+$$
 
 Orientation làm tư thế cổ tay tự nhiên hơn nhưng tiêu thụ bậc tự do và có thể cạnh tranh với position target. Thực nghiệm xác nhận weight orientation chưa phù hợp sẽ làm giảm convergence.
 
@@ -176,7 +176,7 @@ Các kỹ thuật đã thử:
 - Median filter để loại spike.
 - Savitzky–Golay để giảm nhiễu nhưng giữ xu hướng vận tốc.
 - Giới hạn tốc độ/quãng nhảy.
-- Làm mượt rotation qua quaternion, sửa dấu quaternion và chiếu lại lên nhóm quay \(SO(3)\).
+- Làm mượt rotation qua quaternion, sửa dấu quaternion và chiếu lại lên nhóm quay $SO(3)$.
 
 Lọc quá yếu giữ nhiễu; lọc quá mạnh làm mất chuyển động thật, tăng lag hoặc loại nhầm frame hợp lệ. Vì vậy bộ lọc phải gắn với confidence và vận tốc chuyển động.
 
@@ -292,7 +292,7 @@ Kết quả này chứng minh kiến trúc hoạt động, nhưng video dễ và
 - Chuyển quy ước camera sang góc nhìn đầu/cổ.
 - Bỏ swap tay theo camera đối diện.
 - Thiết kế lại axis mapping và workspace trái/phải.
-- Thử nhiều scale; chốt PhaseB \(x=0,35,\ y=0,50,\ z=0,25\).
+- Thử nhiều scale; chốt PhaseB $x=0{,}35,\ y=0{,}50,\ z=0{,}25$.
 - Tích hợp loader EgoWorld/LeRobot.
 
 Thử nghiệm ngày 18 cho thấy giảm scale có thể tăng convergence nhưng làm robot gần như đứng yên. Đây là lý do rollback và giữ PhaseB thay vì chạy theo metric.
